@@ -1,7 +1,9 @@
 use std::io::{self, BufReader};
 use std::fs::File;
-use std::io::BufRead;
+use std::io::{BufRead};
 use std::str::FromStr;
+
+const CONNECTION_DATA: &'static [u8] = include_bytes!("../dict/matrix.def");
 
 pub struct ConnectionCostMatrix {
     costs: Vec<i32>,
@@ -9,10 +11,18 @@ pub struct ConnectionCostMatrix {
 }
 
 impl ConnectionCostMatrix {
-    pub fn load(path: &str) -> io::Result<ConnectionCostMatrix> {
+    pub fn load_file(path: &str) -> io::Result<ConnectionCostMatrix> {
         let reader = File::open(path)?;
         let buf_reader = BufReader::new(reader);
-        let mut lines = buf_reader.lines().map(|line_res| line_res
+        ConnectionCostMatrix::load_def(buf_reader)
+    }
+
+    pub fn load_default() -> ConnectionCostMatrix {
+        ConnectionCostMatrix::load_def(CONNECTION_DATA).unwrap()
+    }
+
+    pub fn load_def<R: BufRead>(reader: R) -> io::Result<ConnectionCostMatrix> {
+        let mut lines = reader.lines().map(|line_res| line_res
             .unwrap()
             .split(' ')
             .map(|s| i32::from_str(s).unwrap())

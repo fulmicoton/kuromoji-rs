@@ -34,14 +34,6 @@ pub struct Node {
     pub stop_index: u32,
 }
 
-impl Node {
-    fn with_word_entry(word_entry: WordEntry) -> Node {
-        let mut node = Node::default();
-        node.word_entry = word_entry;
-        node
-    }
-}
-
 #[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub struct NodeId(pub u32);
 

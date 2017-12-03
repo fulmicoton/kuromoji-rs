@@ -19,8 +19,8 @@ pub struct Tokenizer {
 impl Tokenizer {
 
     pub fn new() -> Tokenizer {
-        let dict = Dict::load("/Users/pmasurel/github/kuromoji/ipadic-utf8/total.csv").unwrap();
-        let cost_matrix = ConnectionCostMatrix::load("/Users/pmasurel/github/kuromoji/ipadic-utf8/matrix.def").unwrap();
+        let dict = Dict::load_default();
+        let cost_matrix = ConnectionCostMatrix::load_default();
         Tokenizer {
             dict: dict,
             cost_matrix: cost_matrix,
@@ -40,15 +40,12 @@ impl Tokenizer {
 #[cfg(test)]
 mod tests {
 
-    use dict::Dict;
     use super::Tokenizer;
 
     #[test]
     fn test_dict() {
         let mut tokenizer = Tokenizer::new();
-        for i in 0..10000000 {
-            let tokens = tokenizer.tokenize("すもももももももものうち");
-            assert!(tokens.len() > 0);
-        }
+        let tokens = tokenizer.tokenize("すもももももももものうち");
+        assert!(tokens.len() > 0);
     }
 }

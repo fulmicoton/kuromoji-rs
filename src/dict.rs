@@ -1,16 +1,18 @@
-use std::io::{self, BufReader};
+use std::io::{self, Read, BufReader};
 use std::fs::File;
 use csv;
 use std::u32;
 use std::str::FromStr;
 use aho_corasick::AcAutomaton;
 
+
+const DICTIONARY_DATA: &'static [u8] = include_bytes!("../dict/dict.csv");
+
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct WordEntry {
     pub word_cost: i32,
     side_id: u32,
-//    pub left_id: u32,
-//    pub right_id: u32,
 }
 
 impl WordEntry {
@@ -88,24 +90,31 @@ impl Dict {
         self.word_entries[word_id as usize]
     }
 
-    pub fn load(path: &str) -> io::Result<Dict> {
-        let reader = File::open(path)?;
-        let buf_reader = BufReader::new(reader);
-        let mut csv_reader = csv::Reader::from_reader(buf_reader);
 
+    pub fn load_default() -> Dict {
+        Dict::load_csv(DICTIONARY_DATA)
+            .expect("This should not fail")
+    }
+
+    pub fn load_csv<R: Read>(read: R) -> io::Result<Dict> {
+        let mut csv_reader = csv::Reader::from_reader(read);
         let mut word_entries = vec![];
         let mut words = Vec::new();
-
         for result in csv_reader.records() {
             let record = result.unwrap();
             let row = CSVRow::from(&record[..]);
             word_entries.push(row.word_entry());
             words.push(row.surface_form);
         }
-
         Ok(Dict {
             word_entries: word_entries,
             aho_corasick: AcAutomaton::new(words),
         })
+    }
+
+    pub fn load_file(path: &str) -> io::Result<Dict> {
+        let reader = File::open(path)?;
+        let buf_reader = BufReader::new(reader);
+        Dict::load_csv(buf_reader)
     }
 }
