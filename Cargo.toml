@@ -1,0 +1,8 @@
+[package]
+name = "kuromoji"
+version = "0.1.0"
+authors = ["Paul Masurel <paul.masurel@gmail.com>"]
+
+[dependencies]
+aho-corasick = "0.6.3"
+csv = "0.15.0"
