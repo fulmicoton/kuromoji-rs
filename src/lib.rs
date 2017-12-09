@@ -1,16 +1,20 @@
-extern crate aho_corasick;
-extern crate csv;
+extern crate fst;
+extern crate byteorder;
+
 
 mod viterbi;
-mod dict;
 mod connection;
+mod word_entry;
 
+use self::word_entry::WordEntry;
 use self::viterbi::Lattice;
-use self::dict::Dict;
 use self::connection::ConnectionCostMatrix;
 
+const DICTIONARY_DATA: &'static [u8] = include_bytes!("../dict/dict.fst");
+
+
 pub struct Tokenizer {
-    dict: Dict,
+    dict: fst::raw::Fst,
     cost_matrix: ConnectionCostMatrix,
     lattice: Lattice,
 }
@@ -19,7 +23,7 @@ pub struct Tokenizer {
 impl Tokenizer {
 
     pub fn new() -> Tokenizer {
-        let dict = Dict::load_default();
+        let dict = fst::raw::Fst::from_static_slice(DICTIONARY_DATA).unwrap();
         let cost_matrix = ConnectionCostMatrix::load_default();
         Tokenizer {
             dict: dict,
@@ -41,11 +45,15 @@ impl Tokenizer {
 mod tests {
 
     use super::Tokenizer;
+    use fst;
+    use fst::Streamer;
+    use super::*;
+    use std::str;
 
     #[test]
     fn test_dict() {
         let mut tokenizer = Tokenizer::new();
-        let tokens = tokenizer.tokenize("すもももももももものうち");
-        assert!(tokens.len() > 0);
+        let tokens = tokenizer.tokenize("俺はまだ本気出してないだけ。");
+        assert_eq!(tokens, vec![0, 3, 6, 12, 18, 24, 27, 33, 39]);
     }
 }
