@@ -1,15 +1,15 @@
-#![feature(test)]
+use criterion::{criterion_group, criterion_main};
+use criterion::Criterion;
+use criterion::black_box;
 
-extern crate kuromoji;
-extern crate test;
-
-use test::Bencher;
 use kuromoji::Tokenizer;
 
-#[bench]
-fn test_tokenize(b: &mut Bencher) {
-    let mut tokenizer = Tokenizer::new();
-    b.iter(|| {
-        let tokens = tokenizer.tokenize("すもももももももものうち");
-    })
+fn bench_tokenize(c: &mut Criterion) {
+    c.bench_function("sumomomo", |b| {
+        let mut tokenizer = Tokenizer::with_capacity(100);
+        b.iter(|| tokenizer.tokenize("すもももももももものうち"))
+    });
 }
+
+criterion_group!(benches, bench_tokenize);
+criterion_main!(benches);

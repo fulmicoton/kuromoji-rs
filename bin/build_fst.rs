@@ -1,8 +1,7 @@
-use std::io::{self, BufRead, BufReader};
 use std::fs::File;
-use std::u32;
+use std::io::{self, BufRead, BufReader};
 use std::str::FromStr;
-
+use std::u32;
 
 extern crate byteorder;
 extern crate fst;
@@ -10,7 +9,7 @@ use fst::MapBuilder;
 
 mod connection;
 mod word_entry;
-use word_entry::WordEntry;
+use crate::word_entry::WordEntry;
 
 #[derive(Debug)]
 pub struct CSVRow {
@@ -31,7 +30,6 @@ pub struct CSVRow {
     reading: String,
     pronunciation: String,
 }
-
 
 impl<'a> From<&'a [&'a str]> for CSVRow {
     fn from(fields: &'a [&'a str]) -> CSVRow {
@@ -56,7 +54,6 @@ impl<'a> From<&'a [&'a str]> for CSVRow {
     }
 }
 
-
 fn convert() -> io::Result<()> {
     let file = File::open("./dict/dict.csv")?;
     let buffer = BufReader::new(file);
@@ -67,9 +64,7 @@ fn convert() -> io::Result<()> {
         let row = CSVRow::from(&fields[..]);
         rows.push(row);
     }
-    rows.sort_by_key(|row| {
-        row.surface_form.clone()
-    });
+    rows.sort_by_key(|row| row.surface_form.clone());
 
     let wtr = io::BufWriter::new(File::create("dict/dict.fst")?);
     let mut build = MapBuilder::new(wtr).unwrap();
@@ -80,11 +75,14 @@ fn convert() -> io::Result<()> {
     for row in &rows {
         let word_entry = WordEntry {
             word_cost: row.word_cost,
-            cost_id: row.left_id
+            cost_id: row.left_id,
         };
-        assert_eq!(WordEntry::decode_from_u64(word_entry.encode_as_u64()), word_entry);
+        assert_eq!(
+            WordEntry::decode_from_u64(word_entry.encode_as_u64()),
+            word_entry
+        );
         let key = &row.surface_form;
-        if key != & previous {
+        if key != &previous {
             previous = key.clone();
             multiple_id = 0;
         }
@@ -92,7 +90,7 @@ fn convert() -> io::Result<()> {
         extended_key.push(0);
         extended_key.push(multiple_id as u8);
         assert!(multiple_id < 100);
-        build.insert(extended_key, word_entry.encode_as_u64()   );
+        build.insert(extended_key, word_entry.encode_as_u64());
         multiple_id += 1u8;
     }
 

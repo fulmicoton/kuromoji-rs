@@ -1,20 +1,22 @@
-use std::io::{self, BufRead, BufReader, Write};
 use std::fs::File;
-use std::u32;
+use std::io::{self, BufRead, BufReader, Write};
 use std::str::FromStr;
+use std::{i32, u32};
 
-extern crate byteorder;
 use byteorder::{LittleEndian, WriteBytesExt};
+use crate::ParsingError;
 
-
-fn convert() -> io::Result<()> {
+fn convert() -> Result<(), ParsingError> {
     let file = File::open("./dict/matrix.def")?;
     let buffer = BufReader::new(file);
-    let mut lines = buffer.lines().map(|line_res| line_res
-        .unwrap()
-        .split(' ')
-        .map(|s| i32::from_str(s).unwrap())
-        .collect::<Vec<i32>>());
+    let mut lines = Vec::new();
+    for line_res in buffer.lines() {
+        let line = line_res?;
+        let fields: Vec<i32> = line.split_whitespace()
+            .map(i32::from_str)
+            .collect::<Result<_>()?;
+        lines.push(fields);
+    }
     let header = lines.next().unwrap();
     let forward_size = header[0] as u32;
     let backward_size = header[1] as u32;

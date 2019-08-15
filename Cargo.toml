@@ -2,19 +2,28 @@
 name = "kuromoji"
 version = "0.1.0"
 authors = ["Paul Masurel <paul.masurel@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 fst = {version="0.3", default-features=false}
 byteorder = "1.2"
+encoding = "0.2"
+    #
+    #[[bin]]
+    #name = "build-fs
+    #path = "bin/build_fst.rs"
+    #
+    #[[bin]]
+    #name = "build-cost"
+    #path = "bin/build_cost.rs"
 
 [[bin]]
-name = "build-fst"
-path = "src/build_fst.rs"
+name = "build-char-definition"
+path = "bin/build_char_definition.rs"
 
-[[bin]]
-name = "build-cost"
-path = "src/build_cost.rs"
+[[bench]]
+name = "bench"
+harness = false
 
-[profile.dev]
-#https://github.com/rust-lang/rust/issues/46367
-opt-level = 1
+[dev-dependencies]
+criterion = "0.2"

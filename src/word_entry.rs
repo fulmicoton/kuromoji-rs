@@ -1,17 +1,14 @@
-
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WordEntry {
     pub word_cost: i32,
     pub cost_id: u32,
 }
 
-
 impl WordEntry {
-
     pub fn decode_from_u64(encoded_value: u64) -> WordEntry {
         WordEntry {
             word_cost: (encoded_value & <u32>::max_value() as u64) as i32,
-            cost_id: (encoded_value >> 32u64) as u32
+            cost_id: (encoded_value >> 32u64) as u32,
         }
     }
 
@@ -30,4 +27,3 @@ impl WordEntry {
         self.cost_id
     }
 }
-

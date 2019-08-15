@@ -1,225 +1,251 @@
+use crate::connection::ConnectionCostMatrix;
+use crate::{WordEntry, CharacterDefinitions};
 use std::u32;
-use connection::ConnectionCostMatrix;
-use fst::raw::Output;
-use fst;
-use WordEntry;
+use crate::prefix_dict::PrefixDict;
+use crate::character_definition::CategoryId;
+use crate::unknown_dictionary::UnknownDictionary;
 
-const EOS_NODE: NodeId = NodeId(1u32);
+const EOS_NODE: EdgeId = EdgeId(1u32);
 
 #[derive(Clone, Copy, Debug)]
-pub enum NodeType {
+pub enum EdgeType {
     KNOWN,
     UNKNOWN,
     USER,
-    INSERTED
+    INSERTED,
 }
 
-impl Default for NodeType {
+impl Default for EdgeType {
     fn default() -> Self {
-        NodeType::KNOWN
+        EdgeType::KNOWN
     }
 }
 
 #[derive(Eq, PartialEq, Clone, Copy, Debug)]
-pub struct NodeId(pub u32);
+pub struct EdgeId(pub u32);
 
 #[derive(Default, Clone, Debug)]
-pub struct Node {
-    pub node_type: NodeType,
-    // pub word_id: u32, //< word id in the dictionary
-
+pub struct Edge {
+    pub edge_type: EdgeType,
     pub word_entry: WordEntry,
 
     pub path_cost: i32,
-    pub left_node: Option<NodeId>,
+    pub left_edge: Option<EdgeId>,
 
     pub start_index: u32,
     pub stop_index: u32,
 }
 
-
-
 #[derive(Default)]
 pub struct Lattice {
     capacity: usize,
-    nodes: Vec<Node>,
-    starts_at: Vec<Vec<NodeId>>,
-    ends_at: Vec<Vec<NodeId>>,
+    edges: Vec<Edge>,
+    starts_at: Vec<Vec<EdgeId>>,
+    ends_at: Vec<Vec<EdgeId>>,
 }
 
 impl Lattice {
-
     pub fn clear(&mut self) {
-        for node_vec in &mut self.starts_at {
-            node_vec.clear();
+        for edge_vec in &mut self.starts_at {
+            edge_vec.clear();
         }
-        for node_vec in &mut self.ends_at {
-            node_vec.clear();
+        for edge_vec in &mut self.ends_at {
+            edge_vec.clear();
         }
-        self.nodes.clear()
+        self.edges.clear()
+    }
+
+    fn set_capacity(&mut self, text_len: usize) {
+        self.clear();
+        if self.capacity < text_len {
+            self.capacity = text_len;
+            self.edges.clear();
+            self.starts_at.resize(text_len + 1, Vec::new());
+            self.ends_at.resize(text_len + 1, Vec::new());
+        }
     }
 
     #[inline(never)]
-    pub fn set_text(&mut self, dict: &fst::raw::Fst, text: &str) {
-        let text: &[u8] = text.as_bytes();
+    pub fn set_text(&mut self,
+                    dict: &PrefixDict,
+                    char_definitions: &CharacterDefinitions,
+                    unknown_dictionary: &UnknownDictionary,
+                    text: &str, search_mode: bool) {
         let len = text.len();
-        if self.capacity < text.len() {
-            self.capacity = text.len();
-            self.nodes.clear();
-            self.starts_at = vec![Vec::new(); len + 1];
-            self.ends_at = vec![Vec::new(); len + 1];
-        } else {
-            self.clear();
-        }
-        let bos_node_id = self.add_node(Node::default());
-        let eos_node_id = self.add_node(Node::default());
-        assert_eq!(EOS_NODE, eos_node_id);
-        self.ends_at[0].push(bos_node_id);
-        self.starts_at[len].push(eos_node_id);
+        self.set_capacity(len);
 
-        let mut unknown_word_end_index: Option<usize> = None;
+        let start_edge_id = self.add_edge(Edge::default());
+        let end_edge_id = self.add_edge(Edge::default());
+        assert_eq!(EOS_NODE, end_edge_id);
+        self.ends_at[0].push(start_edge_id);
+        self.starts_at[len].push(end_edge_id);
 
-        for start in 0..len - 1 {
+        // index of the last character of unknown word
+        let mut unknown_word_end: Option<usize> = None;
+
+        for start in 0..len {
+            // No arc is ending here.
+            // No need to check if a valid word starts here.
             if self.ends_at[start as usize].is_empty() {
                 continue;
             }
-            let mut node = dict.root();
-            let mut out = Output::zero();
+
             let suffix = &text[start..];
-            for (i, b) in suffix.iter().cloned().enumerate() {
-                node = match node.find_input(b) {
-                    None => {
-                        break;
-                    },
-                    Some(b_index) => {
-                        let t = node.transition(b_index);
-                        out = out.cat(t.out);
-                        dict.node(t.addr)
-                    }
+
+            let mut found: bool = false;
+
+
+            // we check all word starting at start, using the fst, like we would use
+            // a prefix trie, and populate the lattice with as many edges
+            for (prefix_len, word_entry) in dict.prefix(suffix) {
+                let edge = Edge {
+                    edge_type: EdgeType::KNOWN,
+                    word_entry,
+                    left_edge: None,
+                    start_index: start as u32,
+                    stop_index: (start + prefix_len) as u32,
+                    path_cost: i32::max_value(),
                 };
-                {
-                    if let Some(b_index) = node.find_input(0u8) {
-                        let t = node.transition(b_index);
-                        let children_out = out.cat(t.out);
-                        let leaves_node = dict.node(t.addr);
-                        for b in 0.. {
-                            if let Some(leaf_transition_index) = leaves_node.find_input(b) {
-                                let leaf_transition = leaves_node.transition(leaf_transition_index);
-                                assert!(dict.node(leaf_transition.addr).is_final());
-                                let dest_out = children_out.cat(leaf_transition.out);
-                                let word_entry = WordEntry::decode_from_u64(dest_out.value());
-                                let node = Node {
-                                    node_type: NodeType::KNOWN,
-                                    word_entry: word_entry,
-                                    left_node: None,
-                                    start_index: start as u32,
-                                    stop_index: (start + i + 1) as u32,
-                                    path_cost: i32::max_value(),
-                                };
-                                self.add_node_in_lattice(node);
-                            } else {
-                                break;
-                            }
-                        }
+                self.add_edge_in_lattice( edge);
+                found = true;
+            }
+
+            // In the case of normal mode, it doesn't process unknown word greedily.
+            if search_mode || unknown_word_end.map(|index| index <= start).unwrap_or(true) {
+                if let Some(first_char) = suffix.chars().next() {
+                    let categories = char_definitions.lookup_categories(first_char);
+                    for (i, &category) in categories.iter().enumerate() {
+                        unknown_word_end = self.process_unknown_word(char_definitions, unknown_dictionary, category, unknown_word_end, start, suffix, found);
                     }
                 }
             }
-
-            /*
-            if unknown_word_end_index <= start {
-                let mut unknown_word_length = 0;
-                let first_char: char = suffix.chars().next().unwrap();
-                let is_invoke = self.character_definition.is_invoke(firstCharacter);
-                if (isInvoke) {
-                    unknownWordLength = this.unkDictionary.lookup(suffix);
-                } else if (!found) {
-                    unknownWordLength = this.unkDictionary.lookup(suffix);
-                }
-
-                if (unknownWordLength > 0) {
-                    String unkWord = suffix.substring(0, unknownWordLength);
-                    characterId = this.characterDefinition.lookup(firstCharacter);
-                    int[] wordIds = this.unkDictionary.lookupWordIds(characterId);
-                    int[] arr$ = wordIds;
-                    int len$ = wordIds.length;
-
-                    for(int i$ = 0; i$ < len$; ++i$) {
-                    int wordId = arr$[i$];
-                    ViterbiNode node = new ViterbiNode(wordId, unkWord, this.unkDictionary.getLeftId(wordId), this.unkDictionary.getRightId(wordId), this.unkDictionary.getWordCost(wordId), startIndex, Type.UNKNOWN);
-                    this.addToArrays(node, startIndex + 1, startIndex + 1 + unknownWordLength, startIndexArr, endIndexArr, startSizeArr, endSizeArr);
-                    }
-
-                    unknownWordEndIndex = startIndex + unknownWordLength;
-                }
-            }
-            */
         }
     }
 
+    fn process_unknown_word(&mut self,
+                            char_definitions: &CharacterDefinitions,
+                            unknown_dictionary: &UnknownDictionary,
+                            category: CategoryId,
+                            unknown_word_index: Option<usize>,
+                            start: usize,
+                            suffix: &str,
+                            found: bool) -> Option<usize> {
+        let mut unknown_word_length: usize = 0;
+        let category_data =
+            char_definitions.lookup_definition(category);
 
-    fn add_node_in_lattice(&mut self, node: Node) {
-        let start_index = node.start_index as usize;
-        let stop_index = node.stop_index as usize;
-        let node_id = self.add_node(node);
-        self.starts_at[start_index].push(node_id);
-        self.ends_at[stop_index].push(node_id);
+        if category_data.invoke || !found {
+            unknown_word_length = 1;
+            if category_data.group {
+                for c in suffix.chars().skip(1) {
+                    let categories = char_definitions.lookup_categories(c);
+                    if categories.contains(&category) {
+                        unknown_word_length += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if unknown_word_length > 0 {
+            // optimize
+            /*
+            let unknown_word = suffix.chars().take(unknown_word_length).collect::<String>();
+            for &word_id in unknown_dictionary.lookup_word_ids(category) {
+                let word_id = unknown_dictionary.get_word_id(word_id);
+                let edge = Edge {
+                    edge_type: EdgeType::UNKNOWN,
+                    word_entry: WordEntry {
+                        word_cost: 0, // <
+                        cost_id: word_id //<
+                    },
+                    left_edge: None,
+                    start_index: start as u32,
+                    stop_index: (start + prefix_len) as u32,
+                    path_cost: i32::max_value(),
+                };
+//                self.add_edge_in_lattice(edge);
+//                ViterbiNode node = new ViterbiNode(wordId, unkWord, unknownDictionary, startIndex, ViterbiNode.Type.UNKNOWN);
+//                lattice.addNode(node, startIndex + 1, startIndex + 1 + unknownWordLength);
+            }
+            */
+            /*
+
+            for (int wordId : wordIds) {
+                ViterbiNode node = new ViterbiNode(wordId, unkWord, unknownDictionary, startIndex, ViterbiNode.Type.UNKNOWN);
+                lattice.addNode(node, startIndex + 1, startIndex + 1 + unknownWordLength);
+            }
+            unknownWordEndIndex = startIndex + unknownWordLength;
+            */
+        }
+//        panic!();
+        unknown_word_index
     }
 
-
-    fn add_node(&mut self, node: Node) -> NodeId {
-        let node_id = NodeId(self.nodes.len() as u32);
-        self.nodes.push(node);
-        node_id
+    fn add_edge_in_lattice(&mut self, edge: Edge) {
+        let start_index = edge.start_index as usize;
+        let stop_index = edge.stop_index as usize;
+        let edge_id = self.add_edge(edge);
+        self.starts_at[start_index].push(edge_id);
+        self.ends_at[stop_index].push(edge_id);
     }
 
-    pub fn node(&self, node_id: NodeId) -> &Node {
-        &self.nodes[node_id.0 as usize]
+    fn add_edge(&mut self, edge: Edge) -> EdgeId {
+        let edge_id = EdgeId(self.edges.len() as u32);
+        self.edges.push( edge);
+        edge_id
     }
 
-    pub fn node_mut(&mut self, node_id: NodeId) -> &mut Node {
-        &mut self.nodes[node_id.0 as usize]
+    pub fn edge(&self, edge_id: EdgeId) -> &Edge {
+        &self.edges[edge_id.0 as usize]
+    }
+
+    pub fn edge_mut(&mut self, edge_id: EdgeId) -> &mut Edge {
+        &mut self.edges[edge_id.0 as usize]
     }
 
     #[inline(never)]
     pub fn calculate_path_costs(&mut self, cost_matrix: &ConnectionCostMatrix) {
         let text_len = self.starts_at.len();
         for i in 0..text_len {
-            let left_node_ids = &self.ends_at[i];
-//
-//            if (mode == TokenizerBase.Mode.SEARCH || mode == TokenizerBase.Mode.EXTENDED) {
-//                let penalty_cost = getPenaltyCost(node);
-//            }
-//
-            let right_node_ids = &self.starts_at[i];
-            for &right_node_id in right_node_ids {
-                let right_word_entry = self.node(right_node_id).word_entry;
-                let best_path = left_node_ids
+            let left_edge_ids = &self.ends_at[i];
+            //
+            //            if (mode == TokenizerBase.Mode.SEARCH || mode == TokenizerBase.Mode.EXTENDED) {
+            //                let penalty_cost = getPenaltyCost edge);
+            //            }
+            //
+            let right_edge_ids = &self.starts_at[i];
+            for &right_edge_id in right_edge_ids {
+                let right_word_entry = self.edge(right_edge_id).word_entry;
+                let best_path = left_edge_ids
                     .iter()
                     .cloned()
-                    .map(|left_node_id| {
-                        let left_node = self.node(left_node_id);
-                        let path_cost = left_node.path_cost +
-                            cost_matrix.cost(left_node.word_entry.right_id(), right_word_entry.left_id());
-                        (path_cost, left_node_id)
+                    .map(|left_edge_id| {
+                        let left_edge = self.edge(left_edge_id);
+                        let path_cost = left_edge.path_cost
+                            + cost_matrix
+                                .cost(left_edge.word_entry.right_id(), right_word_entry.left_id());
+                        (path_cost, left_edge_id)
                     })
                     .min_by_key(|&(cost, _)| cost);
                 if let Some((best_cost, best_left)) = best_path {
-                    let node = &mut self.nodes[right_node_id.0 as usize];
-                    node.left_node = Some(best_left);
-                    node.path_cost = right_word_entry.word_cost + best_cost;
+                    let edge = &mut self.edges[right_edge_id.0 as usize];
+                    edge.left_edge = Some(best_left);
+                    edge.path_cost = right_word_entry.word_cost + best_cost;
                 }
             }
         }
     }
 
     pub fn tokens_offset(&self) -> Vec<usize> {
-        let mut tokens = vec!();
-        let mut node_id = EOS_NODE;
+        let mut tokens = vec![];
+        let mut edge_id = EOS_NODE;
         loop {
-            let node = self.node(node_id);
-            if let Some(left_node_id) = node.left_node {
-                tokens.push(node.start_index as usize);
-                node_id = left_node_id;
+            let edge = self.edge(edge_id);
+            if let Some(left_edge_id) = edge.left_edge {
+                tokens.push( edge.start_index as usize);
+                edge_id = left_edge_id;
             } else {
                 break;
             }
@@ -230,7 +256,6 @@ impl Lattice {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 
@@ -239,18 +264,23 @@ mod tests {
     #[test]
     fn test_wordentry() {
         fn test_serdeser(word_cost: i32, cost_id: u32) {
-            let word_entry = WordEntry { word_cost: word_cost, cost_id: cost_id};
-                assert_eq!(word_entry, WordEntry::from(word_entry.to()));
+            let word_entry = WordEntry {
+                word_cost: word_cost,
+                cost_id: cost_id,
+            };
+            assert_eq!(
+                word_entry,
+                WordEntry::decode_from_u64(word_entry.encode_as_u64())
+            );
         }
         test_serdeser(-1i32, 0u32);
         test_serdeser(-1i32, 1u32);
         // test_serdeser(-1000000000i32, 3000000000u32);
     }
 
-
     #[test]
     fn test_fst() {
-        use fst::{self, IntoStreamer, Streamer, Map, MapBuilder};
+        use fst::{Map, MapBuilder, Streamer};
 
         let mut buffer = Vec::new();
         {
