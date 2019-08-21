@@ -1,97 +1,68 @@
 use std::io;
-use fst;
+use tantivy_fst;
 use crate::WordEntry;
-use fst::raw::Output;
+use tantivy_fst::raw::Output;
+use std::ops::Deref;
+use tantivy_fst::{IntoStreamer, Streamer, Map};
 
-pub struct PrefixDictBuilder<W: io::Write> {
-    builder: fst::MapBuilder<W>,
-    buffer: Vec<u8>,
+const IPAD_DATA: &'static [u8] = include_bytes!("../dict/dict.fst");
+const IPAD_VALS: &'static [u8] = include_bytes!("../dict/dict.vals");
+
+pub struct PrefixDict<Data=&'static [u8 ]> {
+    pub fst: tantivy_fst::raw::Fst<Data>,
+    vals_data: Data
 }
 
-// TODO remove exposure o fst Error
-impl<W: io::Write> PrefixDictBuilder<W> {
 
-    pub(crate) fn new(wtr: W) -> fst::Result<PrefixDictBuilder<W>> {
-        Ok(PrefixDictBuilder {
-            builder: fst::MapBuilder::new(wtr)?,
-            buffer: vec![]
-        })
-    }
-
-    pub fn insert(&mut self, key: &[u8], word_entries: &[WordEntry]) -> fst::Result<()> {
-        if word_entries.is_empty() {
-            return Ok(())
-        }
-        self.buffer.clear();
-        self.buffer.extend(key);
-        self.buffer.push(0u8);
-        for (b, &word_entry) in word_entries.iter().clone().enumerate() {
-            self.buffer.resize(key.len() + 1, 0u8);
-            self.buffer.push(b as u8);
-            self.builder.insert(&self.buffer[..], word_entry.encode_as_u64())?;
-        }
-        Ok(())
-    }
-
-    pub fn finish(self) -> fst::Result<()> {
-        self.builder.finish()
+impl Default for PrefixDict<&'static [u8]> {
+    fn default() -> PrefixDict<&'static [u8]>  {
+        PrefixDict::from_static_slice(IPAD_DATA, IPAD_VALS).unwrap()
     }
 }
 
-pub struct PrefixDict {
-    pub fst: fst::raw::Fst
-}
-
-impl PrefixDict {
-
-    pub fn from_static_slice(bytes: &'static [u8]) -> fst::Result<PrefixDict> {
-        let fst = fst::raw::Fst::from_static_slice(bytes)?;
+impl PrefixDict<&'static [u8]> {
+    pub fn from_static_slice(fst_data: &'static [u8], vals_data: &'static [u8]) -> tantivy_fst::Result<PrefixDict> {
+        let fst = tantivy_fst::raw::Fst::new(fst_data)?;
         Ok(PrefixDict {
-            fst
+            fst,
+            vals_data
         })
     }
+}
 
-    pub fn from_bytes(bytes: Vec<u8>) -> fst::Result<PrefixDict> {
-        let fst = fst::raw::Fst::from_bytes(bytes)?;
-        Ok(PrefixDict {
-            fst
-        })
-    }
+
+impl<D: Deref<Target=[u8]>> PrefixDict<D> {
 
     pub fn prefix<'a>(&'a self, s: &'a str) -> impl Iterator<Item=(usize, WordEntry)> + 'a {
         s.as_bytes()
          .iter()
-         .scan((self.fst.root(), Output::zero()), move |(node, output), &byte, | {
+         .scan((0, self.fst.root(), Output::zero()),
+                move |(prefix_len, node, output), &byte, | {
             if let Some(b_index) = node.find_input(byte) {
                 let transition = node.transition(b_index);
+                *prefix_len += 1;
                 *output = output.cat(transition.out);
                 *node = self.fst.node(transition.addr);
-                return Some((*node, *output));
+                return Some((node.is_final(), *prefix_len, output.value()));
             }
             None
          })
-         .enumerate()
-         .flat_map(move|(prefix_len, (node, out))|
-             node.find_input(0u8)
-                 .map(|b_index| {
-                     let t = node.transition(b_index);
-                     (prefix_len + 1, self.fst.node(t.addr), out.cat(t.out))
-                 })
-         )
-         .flat_map(|(prefix_len, node, out)|
-            (0..)
-                .map(move|b|
-                    node.find_input(b)
-                        .map(|b_index| {
-                            let t = node.transition(b_index);
-                            let out = out.cat(t.out);
-                            (prefix_len,  WordEntry::decode_from_u64(out.value()))
-                        })
-                )
-                .take_while(Option::is_some)
-                .flatten()
-         )
+         .filter_map(|(is_final, prefix_len, offset_len)|
+             if is_final {
+                Some((prefix_len, offset_len))
+             } else {
+                 None
+             })
+         .flat_map(move|(prefix_len, offset_len)| {
+            let len = offset_len & ((1u64 << 5) - 1u64);
+            let offset = offset_len >> 5u64;
+            let offset_bytes = (offset as usize) * WordEntry::SERIALIZED_LEN;
+            let mut data: &[u8] = &self.vals_data[offset_bytes..];
+            (0..len).map(move |i|
+                (prefix_len, WordEntry::deserialize(&mut data).unwrap()))
+         })
     }
+
 }
 
 
@@ -99,9 +70,17 @@ impl PrefixDict {
 #[cfg(test)]
 mod tests {
     use crate::WordEntry;
-    use crate::prefix_dict::PrefixDictBuilder;
     use super::PrefixDict;
 
+    #[test]
+    fn test_fst_prefix() {
+        let prefix_dict = PrefixDict::default();
+        for (a, word_entry) in prefix_dict.prefix("下北沢") {
+            println!("{} {:?}", a, word_entry)
+        }
+    }
+
+    /*
     #[test]
     fn test_fst_prefix() {
         let mut buffer = Vec::new();
@@ -115,7 +94,7 @@ mod tests {
             WordEntry { word_cost: 0, cost_id: 3 }
         ]).unwrap();
         builder.finish().unwrap();
-        let fst = PrefixDict::from_bytes(buffer).unwrap();
+        let fst = PrefixDict:(buffer).unwrap();
         assert_eq!(fst.prefix("aaabc").collect::<Vec<_>>(),
             vec![(3, WordEntry { word_cost: 0, cost_id: 1 }),
                   (3, WordEntry { word_cost: 0, cost_id: 2 }),
@@ -126,4 +105,5 @@ mod tests {
                         (3, WordEntry { word_cost: 0, cost_id: 2 })]
         );
     }
+    */
 }

@@ -7,6 +7,17 @@ mod unknown_dictionary;
 
 use std::io;
 use encoding::DecoderTrap;
+use crate::connection::ConnectionCostMatrix;
+use crate::viterbi::Lattice;
+pub use crate::word_entry::WordEntry;
+use crate::prefix_dict::PrefixDict;
+pub use crate::character_definition::{CharacterDefinitions, CharacterDefinitionsBuilder};
+use std::path::Path;
+use std::fs::File;
+use std::io::Read;
+use encoding::Encoding;
+use std::num::ParseIntError;
+use crate::unknown_dictionary::UnknownDictionary;
 
 const IPADIC_PATH: &'static str = "ipadic/mecab-ipadic-2.7.0-20070801";
 
@@ -41,22 +52,9 @@ pub(crate) fn read_all(path: &Path) -> Result<String, ParsingError> {
         .map_err(|_| ParsingError::Encoding)
 }
 
-use crate::connection::ConnectionCostMatrix;
-use crate::viterbi::Lattice;
-pub(crate) use crate::word_entry::WordEntry;
-use crate::prefix_dict::PrefixDict;
-pub use crate::character_definition::{CharacterDefinitions, CharacterDefinitionsBuilder};
-use std::path::Path;
-use std::fs::File;
-use std::io::Read;
-use encoding::Encoding;
-use std::num::ParseIntError;
-use crate::unknown_dictionary::UnknownDictionary;
-
-const DICTIONARY_DATA: &'static [u8] = include_bytes!("../dict/dict.fst");
 
 pub struct Tokenizer {
-    dict: PrefixDict,
+    dict: PrefixDict<&'static [u8]>,
     cost_matrix: ConnectionCostMatrix,
     lattice: Lattice,
     char_definitions: CharacterDefinitions,
@@ -65,7 +63,7 @@ pub struct Tokenizer {
 
 impl Tokenizer {
     pub fn new() -> Tokenizer {
-        let dict = PrefixDict::from_static_slice(DICTIONARY_DATA).unwrap();
+        let dict = PrefixDict::default();
         let cost_matrix = ConnectionCostMatrix::load_default();
         let char_definitions = CharacterDefinitions::load();
         let unknown_dictionary =

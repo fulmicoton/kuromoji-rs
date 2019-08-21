@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_fst() {
-        use fst::{Map, MapBuilder, Streamer};
+        use tantivy_fst::{Map, MapBuilder, Streamer};
 
         let mut buffer = Vec::new();
         {

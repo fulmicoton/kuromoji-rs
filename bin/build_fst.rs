@@ -1,15 +1,13 @@
+//mod connection;
+//mod word_entry;
+
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use std::str::FromStr;
 use std::u32;
-
-extern crate byteorder;
-extern crate fst;
-use fst::MapBuilder;
-
-mod connection;
-mod word_entry;
-use crate::word_entry::WordEntry;
+use tantivy_fst::MapBuilder;
+use kuromoji::WordEntry;
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub struct CSVRow {
@@ -66,38 +64,43 @@ fn convert() -> io::Result<()> {
     }
     rows.sort_by_key(|row| row.surface_form.clone());
 
-    let wtr = io::BufWriter::new(File::create("dict/dict.fst")?);
-    let mut build = MapBuilder::new(wtr).unwrap();
+    let wtr_fst = io::BufWriter::new(File::create("dict/dict.fst")?);
+    let mut wtr_vals = io::BufWriter::new(File::create("dict/dict.vals")?);
 
-    let mut multiple_id: u8 = 0u8;
-    let mut previous = String::from("");
+    let mut word_entry_map: BTreeMap<String, Vec<WordEntry>> = BTreeMap::new();
 
     for row in &rows {
-        let word_entry = WordEntry {
-            word_cost: row.word_cost,
-            cost_id: row.left_id,
-        };
-        assert_eq!(
-            WordEntry::decode_from_u64(word_entry.encode_as_u64()),
-            word_entry
-        );
-        let key = &row.surface_form;
-        if key != &previous {
-            previous = key.clone();
-            multiple_id = 0;
-        }
-        let mut extended_key = Vec::from(key.as_bytes());
-        extended_key.push(0);
-        extended_key.push(multiple_id as u8);
-        assert!(multiple_id < 100);
-        build.insert(extended_key, word_entry.encode_as_u64());
-        multiple_id += 1u8;
+        word_entry_map
+            .entry(row.surface_form.clone())
+            .or_insert_with(Vec::new)
+            .push(WordEntry {
+                word_cost: row.word_cost,
+                cost_id: row.left_id,
+            });
     }
 
-    build.finish().unwrap();
+    let mut id = 0u64;
+    let mut fst_build = MapBuilder::new(wtr_fst).unwrap();
+    for (key, word_entries) in &word_entry_map {
+        let len = word_entries.len() as u64;
+        assert!(len < (1 << 5));
+        let val = (id << 5) | len;
+        dbg!(val);
+        fst_build.insert(&key, val).unwrap();
+        id += len;
+    }
+
+    for word_entries in word_entry_map.values() {
+        for word_entry in word_entries {
+            word_entry.serialize(&mut wtr_vals)?;
+        }
+    }
+    wtr_vals.flush()?;
+
+    fst_build.finish().unwrap();
     Ok(())
 }
 
-fn main() {
-    convert().expect("done");
+fn main() -> io::Result<()> {
+    convert()
 }
