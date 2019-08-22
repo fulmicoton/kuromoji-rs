@@ -9,9 +9,23 @@ tantivy-fst = "0.1"
 byteorder = "1.2"
 encoding = "0.2"
 
+
+[dev-dependencies]
+criterion = "0.2"
+
+
+[profile.release]
+debug = true
+lto = true
+
 [[bin]]
 name = "build-fst"
 path = "bin/build_fst.rs"
+
+[[bin]]
+name = "flamegraph"
+path = "bin/flamegraph.rs"
+
 
     #[[bin]]
     #name = "build-cost"
@@ -25,5 +39,3 @@ path = "bin/build_char_definition.rs"
 name = "bench"
 harness = false
 
-[dev-dependencies]
-criterion = "0.2"

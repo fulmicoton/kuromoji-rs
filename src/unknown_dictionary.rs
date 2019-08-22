@@ -127,6 +127,10 @@ impl UnknownDictionary {
         })
     }
 
+    pub fn word_entry(&self, word_id: u32) -> WordEntry {
+        self.costs[word_id as usize]
+    }
+
     pub fn parse(char_definitions: &CharacterDefinitions, dir: &Path) -> Result<UnknownDictionary, ParsingError> {
         let path = dir.join(Path::new("unk.def"));
         let unk_def = crate::read_all(&path)?;
@@ -136,6 +140,7 @@ impl UnknownDictionary {
     pub fn lookup_word_ids(&self, category_id: CategoryId) -> &[u32] {
         &self.category_references[category_id.0][..]
     }
+
 
 
     pub fn load(char_definitions: &CharacterDefinitions) -> Result<UnknownDictionary, ParsingError> {
@@ -151,6 +156,6 @@ mod tests {
     #[test]
     fn test_parse_unknown_dictionary() {
         let char_defs = CharacterDefinitions::load();
-        let unknown_dict = UnknownDictionary::parse(&char_defs, crate::ipadic_path()).unwrap();
+        let _unknown_dict = UnknownDictionary::parse(&char_defs, crate::ipadic_path()).unwrap();
     }
 }

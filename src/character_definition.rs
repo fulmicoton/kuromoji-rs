@@ -108,11 +108,12 @@ impl CharacterDefinitionsBuilder {
                 return Err(ParsingError::ParsingError(format!("Invalid line: {}", line)));
             }
         }
+        println!("{:?} =>  {}..{}", line, lower_bound, higher_bound);
         let category_ids: Vec<CategoryId> = fields[1..]
             .iter()
             .map(|category| self.category_id(category))
             .collect();
-        let ranges = self.char_ranges.push((lower_bound, higher_bound, category_ids));
+        self.char_ranges.push((lower_bound, higher_bound, category_ids));
         Ok(())
     }
 
@@ -125,7 +126,8 @@ impl CharacterDefinitionsBuilder {
         let group = fields[2].parse::<u32>().map_err(ParsingError::from_error)? == 1;
         let length = fields[3].parse::<u32>().map_err(ParsingError::from_error)?;
         let category_data = CategoryData { invoke, group, length };
-        let category_id = self.category_id(fields[0]);
+        // force a category_id allocation
+        self.category_id(fields[0]);
         self.category_definition.push(category_data);
         Ok(())
     }
@@ -197,7 +199,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lookup() {
+    fn test_char_definitions() {
         let char_definitions = CharacterDefinitions::load();
         {
             let categories = char_definitions.lookup_categories('あ');
@@ -217,88 +219,6 @@ mod tests {
 
         }
     }
+
 }
 
-/*
-public static final int INVOKE = 0;
-public static final int GROUP = 1;
-
-private static final String DEFAULT_CATEGORY = "DEFAULT";
-
-private static final int LENGTH = 2; // Not used as of now
-
-private final int[][] categoryDefinitions;
-
-private final int[][] codepointMappings;
-
-private final String[] categorySymbols;
-
-private final int[] defaultCategory;
-
-public CharacterDefinitions(int[][] categoryDefinitions,
-int[][] codepointMappings,
-String[] categorySymbols) {
-this.categoryDefinitions = categoryDefinitions;
-this.codepointMappings = codepointMappings;
-this.categorySymbols = categorySymbols;
-this.defaultCategory = lookupCategories(new String[]{DEFAULT_CATEGORY});
-}
-
-public int[] lookupCategories(char c) {
-int[] mappings = codepointMappings[c];
-
-if (mappings == null) {
-return defaultCategory;
-}
-
-return mappings;
-}
-
-public int[] lookupDefinition(int category) {
-return categoryDefinitions[category];
-}
-
-public static CharacterDefinitions newInstance(ResourceResolver resolver) throws IOException {
-InputStream charDefInput = resolver.resolve(CHARACTER_DEFINITIONS_FILENAME);
-
-int[][] definitions = IntegerArrayIO.readSparseArray2D(charDefInput);
-int[][] mappings = IntegerArrayIO.readSparseArray2D(charDefInput);
-String[] symbols = StringArrayIO.readArray(charDefInput);
-
-CharacterDefinitions characterDefinition = new CharacterDefinitions(
-definitions,
-mappings,
-symbols
-);
-
-return characterDefinition;
-}
-
-public void setCategories(char c, String[] categoryNames) {
-codepointMappings[c] = lookupCategories(categoryNames);
-}
-
-private int[] lookupCategories(String[] categoryNames) {
-int[] categories = new int[categoryNames.length];
-
-for (int i = 0; i < categoryNames.length; i++) {
-String category = categoryNames[i];
-int categoryIndex = -1;
-
-for (int j = 0; j < categorySymbols.length; j++) {
-if (category.equals(categorySymbols[j])) {
-categoryIndex = j;
-}
-}
-
-if (categoryIndex < 0) {
-throw new RuntimeException("No category '" + category + "' found");
-}
-
-categories[i] = categoryIndex;
-}
-
-return categories;
-}
-}
-*/

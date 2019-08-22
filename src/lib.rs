@@ -8,7 +8,7 @@ mod unknown_dictionary;
 use std::io;
 use encoding::DecoderTrap;
 use crate::connection::ConnectionCostMatrix;
-use crate::viterbi::Lattice;
+use crate::viterbi::{Lattice, Edge};
 pub use crate::word_entry::WordEntry;
 use crate::prefix_dict::PrefixDict;
 pub use crate::character_definition::{CharacterDefinitions, CharacterDefinitionsBuilder};
@@ -30,6 +30,65 @@ pub enum ParsingError {
     Encoding,
     IoError(io::Error),
     ContentError
+}
+
+
+#[derive(Clone, Debug)]
+pub struct Penalty {
+    kanji_penalty_length_threshold: usize,
+    kanji_penalty_length_penalty: i32,
+    other_penalty_length_threshold: usize,
+    other_penalty_length_penalty: i32,
+}
+
+impl Default for Penalty {
+    fn default() -> Self {
+        Penalty {
+            kanji_penalty_length_threshold: 2,
+            kanji_penalty_length_penalty: 3000,
+            other_penalty_length_threshold: 7,
+            other_penalty_length_penalty: 1700,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Mode {
+    Normal,
+    Search(Penalty),
+}
+
+impl Penalty {
+    pub fn penalty(&self, edge: &Edge) -> i32 {
+        let num_chars = edge.num_chars();
+        if num_chars <= self.kanji_penalty_length_threshold {
+            return 0;
+        }
+        if edge.kanji_only {
+            ((num_chars - self.kanji_penalty_length_threshold) as i32) * self.kanji_penalty_length_penalty
+        } else if num_chars > self.other_penalty_length_threshold {
+            ((num_chars - self.other_penalty_length_threshold) as i32) * self.other_penalty_length_penalty
+        } else {
+            0
+        }
+    }
+}
+
+
+impl Mode {
+
+    pub fn is_search(&self) -> bool {
+        match self {
+            Mode::Normal => false,
+            Mode::Search(_penalty) => true,
+        }
+    }
+    pub fn penalty_cost(&self, edge: &Edge) -> i32 {
+        match self {
+            Mode::Normal => 0i32,
+            Mode::Search(penalty) => penalty.penalty(edge),
+        }
+    }
 }
 
 impl From<ParseIntError> for ParsingError {
@@ -59,6 +118,8 @@ pub struct Tokenizer {
     lattice: Lattice,
     char_definitions: CharacterDefinitions,
     unknown_dictionary: UnknownDictionary,
+    mode: Mode,
+    offsets: Vec<usize>,
 }
 
 impl Tokenizer {
@@ -73,15 +134,25 @@ impl Tokenizer {
             cost_matrix,
             lattice: Lattice::default(),
             char_definitions,
-            unknown_dictionary
+            unknown_dictionary,
+            mode: Mode::Search(Penalty::default()),
+            offsets: Vec::new()
         }
     }
 
-    pub fn tokenize(&mut self, text: &str) -> Vec<usize> {
-        self.lattice.set_text(&self.dict, &self.char_definitions, &self.unknown_dictionary, text, true);
-        self.lattice.calculate_path_costs(&self.cost_matrix);
-        let tokens_offset = self.lattice.tokens_offset();
-        tokens_offset
+    pub fn tokenize_offsets(&mut self, text: &str) -> &[usize] {
+        self.lattice.set_text(&self.dict, &self.char_definitions, &self.unknown_dictionary, text, &self.mode);
+        self.lattice.calculate_path_costs(&self.cost_matrix, &self.mode);
+        self.lattice.tokens_offset(&mut self.offsets);
+        &self.offsets[..]
+    }
+
+    pub fn tokenize<'a>(&'a mut self, text: &'a str) -> impl Iterator<Item=&'a str> + 'a {
+        self.tokenize_offsets(text);
+        self.offsets.push(text.len());
+        self.offsets
+            .windows(2)
+            .map(move|arr| &text[arr[0]..arr[1]])
     }
 }
 
@@ -97,9 +168,39 @@ mod tests {
     use super::Tokenizer;
 
     #[test]
-    fn test_dict() {
+    fn test_tokenize() {
         let mut tokenizer = Tokenizer::new();
-        let tokens = tokenizer.tokenize("俺はまだ本気出してないだけ。");
-        assert_eq!(tokens, vec![0, 3, 6, 12, 18, 24, 27, 33, 39]);
+        let tokens = tokenizer.tokenize_offsets("俺はまだ本気出してないだけ。");
+        assert_eq!(tokens, &[0, 3, 6, 12, 18, 24, 27, 33, 39]);
     }
+
+    #[test]
+    fn test_tokenize2() {
+        let mut tokenizer = Tokenizer::new();
+        let tokens: Vec<&str> = tokenizer.tokenize("私の名前はマズレル野恵美です。").collect();
+        assert_eq!(tokens, vec!["私", "の", "名前", "は", "マズレル", "野", "恵美", "です", "。"]);
+    }
+
+    #[test]
+    fn test_tokenize_junk() {
+        let mut tokenizer = Tokenizer::new();
+        let tokens: Vec<&str> = tokenizer.tokenize("関西国werwerママママ空港").collect();
+        assert_eq!(tokens, vec!["関西", "国", "werwer", "ママ", "ママ", "空港"]);
+    }
+
+    #[test]
+    fn test_tokenize_search_mode() {
+        let mut tokenizer = Tokenizer::new();
+        let tokens: Vec<&str> = tokenizer.tokenize("関西国際空港").collect();
+        assert_eq!(tokens, vec!["関西", "国際", "空港"]);
+    }
+
+    #[test]
+    fn test_tokenize_sumomomomo() {
+        let mut tokenizer = Tokenizer::new();
+        let tokens: Vec<&str> = tokenizer.tokenize("すもももももももものうち").collect();
+        assert_eq!(tokens, vec!["すもも", "も", "もも", "も", "もも", "の", "うち"]);
+    }
+
+
 }

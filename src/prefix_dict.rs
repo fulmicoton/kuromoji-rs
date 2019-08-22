@@ -1,9 +1,7 @@
-use std::io;
 use tantivy_fst;
 use crate::WordEntry;
 use tantivy_fst::raw::Output;
 use std::ops::Deref;
-use tantivy_fst::{IntoStreamer, Streamer, Map};
 
 const IPAD_DATA: &'static [u8] = include_bytes!("../dict/dict.fst");
 const IPAD_VALS: &'static [u8] = include_bytes!("../dict/dict.vals");
@@ -57,9 +55,9 @@ impl<D: Deref<Target=[u8]>> PrefixDict<D> {
             let len = offset_len & ((1u64 << 5) - 1u64);
             let offset = offset_len >> 5u64;
             let offset_bytes = (offset as usize) * WordEntry::SERIALIZED_LEN;
-            let mut data: &[u8] = &self.vals_data[offset_bytes..];
-            (0..len).map(move |i|
-                (prefix_len, WordEntry::deserialize(&mut data).unwrap()))
+            let data: &[u8] = &self.vals_data[offset_bytes..];
+            (0..len as usize).map(move |i|
+                (prefix_len, WordEntry::deserialize(&data[WordEntry::SERIALIZED_LEN * i..])))
          })
     }
 
@@ -69,7 +67,6 @@ impl<D: Deref<Target=[u8]>> PrefixDict<D> {
 
 #[cfg(test)]
 mod tests {
-    use crate::WordEntry;
     use super::PrefixDict;
 
     #[test]

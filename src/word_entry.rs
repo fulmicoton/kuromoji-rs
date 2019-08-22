@@ -1,6 +1,6 @@
 use std::io;
 use byteorder::{ByteOrder, LittleEndian};
-use byteorder::{WriteBytesExt, ReadBytesExt};
+use byteorder::WriteBytesExt;
 
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WordEntry {
@@ -40,13 +40,14 @@ impl WordEntry {
         Ok(())
     }
 
-    pub fn deserialize<R: io::Read>(mut read: R) -> io::Result<WordEntry> {
-        let word_cost = read.read_i16::<LittleEndian>()?;
-        let cost_id = read.read_u16::<LittleEndian>()?;
-        Ok(WordEntry {
+
+    pub fn deserialize(data: &[u8]) -> WordEntry {
+        let word_cost = LittleEndian::read_i16(&data[0..2]);
+        let cost_id = LittleEndian::read_u16(&data[2..4]);
+        WordEntry {
             word_cost: word_cost as i32,
             cost_id: cost_id as u32
-        })
+        }
     }
 }
 
@@ -63,7 +64,7 @@ mod tests {
         };
         word_entry.serialize(&mut buffer).unwrap();
         assert_eq!(WordEntry::SERIALIZED_LEN, buffer.len());
-        let word_entry2 = WordEntry::deserialize(&buffer[..]).unwrap();
+        let word_entry2 = WordEntry::deserialize(&buffer[..]);
         assert_eq!(word_entry, word_entry2);
     }
 }
