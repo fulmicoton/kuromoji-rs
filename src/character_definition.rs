@@ -1,135 +1,23 @@
-use std::collections::HashMap;
-use encoding::all::UTF_16LE;
-use encoding::{Encoding, DecoderTrap};
-use byteorder::{ByteOrder, LittleEndian};
-use crate::ParsingError;
+use serde::{Serialize, Deserialize};
 
-const DEFAULT_CATEGORY_NAME: &'static str = "DEFAULT";
+const CHAR_DEFINITION_DATA: &'static [u8] = include_bytes!("../dict/char_def.bin");
 
-#[derive(Default)]
-pub struct CharacterDefinitionsBuilder {
-    category_definition: Vec<CategoryData>,
-    category_index: HashMap<String, CategoryId>,
-    char_ranges: Vec<(u32, u32, Vec<CategoryId>)>
-}
-
-
+#[derive(Serialize, Deserialize)]
 pub struct CategoryData {
     pub invoke: bool,
     pub group:  bool,
     pub length: u32
 }
 
-fn ucs2_to_unicode(ucs2_codepoint: u16) -> u32 {
-    let mut buf = [0u8; 2];
-    LittleEndian::write_u16(&mut buf[..], ucs2_codepoint);
-    let s: String = UTF_16LE.decode(&buf[..], DecoderTrap::Strict).unwrap();
-    let chrs: Vec<char> = s.chars().collect();
-    assert_eq!(chrs.len(), 1);
-    chrs[0] as u32
-}
-
-fn parse_hex_codepoint(s: &str) -> Result<u32, ParsingError> {
-    let removed_0x = s.trim_start_matches("0x");
-    let ucs2_codepoint = u16::from_str_radix(removed_0x, 16).map_err(ParsingError::from_error)?;
-    let utf8_str = ucs2_to_unicode(ucs2_codepoint);
-    Ok(utf8_str)
-}
-
-#[derive(Clone, Debug, Hash, Copy, PartialOrd, Ord, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, Copy, PartialOrd, Ord, Eq, PartialEq)]
 pub struct CategoryId(pub usize);
 
-impl CharacterDefinitionsBuilder {
-
-    pub fn category_id(&mut self, category_name: &str) -> CategoryId {
-        let num_categories = self.category_index.len();
-        *self.category_index
-            .entry(category_name.to_string())
-            .or_insert(CategoryId(num_categories))
-    }
-
-    pub fn parse(&mut self, content: &String) -> Result<(), ParsingError> {
-        for line in content.lines() {
-            let line_str = line.split('#').next().unwrap().trim();
-            if line_str.is_empty() {
-                continue;
-            }
-            if line_str.starts_with("0x") {
-                self.parse_range(line_str)?;
-            } else {
-                self.parse_category(line_str)?;
-            }
-        }
-        Ok(())
-    }
-
-
-
-    fn parse_range(&mut self, line: &str) -> Result<(), ParsingError> {
-        let fields: Vec<&str> =  line.split_whitespace().collect();
-        let range_bounds: Vec<&str> = fields[0].split("..").collect();
-        let lower_bound: u32;
-        let higher_bound: u32   ;
-        match range_bounds.len() {
-            1 => {
-                lower_bound = parse_hex_codepoint(range_bounds[0])?;
-                higher_bound = lower_bound;
-            }
-            2 => {
-                lower_bound = parse_hex_codepoint(range_bounds[0])?;
-                // the right bound is included in the file.
-                higher_bound = parse_hex_codepoint(range_bounds[1])?;
-            }
-            _ => {
-                return Err(ParsingError::ContentError(format!("Invalid line: {}", line)));
-            }
-        }
-        let category_ids: Vec<CategoryId> = fields[1..]
-            .iter()
-            .map(|category| self.category_id(category))
-            .collect();
-        self.char_ranges.push((lower_bound, higher_bound, category_ids));
-        Ok(())
-    }
-
-    fn parse_category(&mut self, line: &str) -> Result<(), ParsingError> {
-        let fields = line.split_ascii_whitespace().collect::<Vec<&str>>();
-        if fields.len() != 4 {
-            return Err(ParsingError::ContentError(format!("Expected 4 fields. Got {} in {}", fields.len(), line)));
-        }
-        let invoke = fields[1].parse::<u32>().map_err(ParsingError::from_error)? == 1;
-        let group = fields[2].parse::<u32>().map_err(ParsingError::from_error)? == 1;
-        let length = fields[3].parse::<u32>().map_err(ParsingError::from_error)?;
-        let category_data = CategoryData { invoke, group, length };
-        // force a category_id allocation
-        self.category_id(fields[0]);
-        self.category_definition.push(category_data);
-        Ok(())
-    }
-
-    pub fn build(self) -> CharacterDefinitions {
-        let mut category_names: Vec<String> = (0..self.category_index.len())
-            .map(|_| String::new())
-            .collect();
-        for (category_name, category_id) in &self.category_index {
-            category_names[category_id.0] = category_name.clone();
-        }
-        let default_category = *self.category_index.get(DEFAULT_CATEGORY_NAME)
-            .expect("No default category defined.");
-        CharacterDefinitions {
-            category_definitions: self.category_definition,
-            category_names,
-            mapping: self.char_ranges,
-            default_category: [default_category]
-        }
-    }
-}
-
+#[derive(Serialize, Deserialize)]
 pub struct CharacterDefinitions {
-    category_definitions: Vec<CategoryData>,
-    category_names: Vec<String>,
-    mapping: Vec<(u32, u32, Vec<CategoryId>)>,
-    default_category: [CategoryId; 1]
+    pub category_definitions: Vec<CategoryData>,
+    pub category_names: Vec<String>,
+    pub mapping: Vec<(u32, u32, Vec<CategoryId>)>,
+    pub default_category: [CategoryId; 1]
 }
 
 impl CharacterDefinitions {
@@ -138,11 +26,8 @@ impl CharacterDefinitions {
         &self.category_names[..]
     }
 
-    pub fn load() -> Result<CharacterDefinitions, ParsingError> {
-        let mut char_definitions_builder = CharacterDefinitionsBuilder::default();
-        let char_def = crate::read_mecab_file("char.def")?;
-        char_definitions_builder.parse(&char_def)?;
-        Ok(char_definitions_builder.build())
+    pub fn load() -> CharacterDefinitions {
+        bincode::deserialize(CHAR_DEFINITION_DATA).expect("Failed to deserialize char definition data")
     }
     pub fn lookup_definition(&self, category_id: CategoryId) -> &CategoryData {
         &self.category_definitions[category_id.0]
@@ -170,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_char_definitions() {
-        let char_definitions = CharacterDefinitions::load().unwrap();
+        let char_definitions = CharacterDefinitions::load();
         {
             let categories = char_definitions.lookup_categories('あ');
             assert_eq!(categories.len(), 1);

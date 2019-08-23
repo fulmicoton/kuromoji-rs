@@ -1,15 +1,16 @@
-use crate::{CharacterDefinitions, WordEntry};
-use crate::ParsingError;
-use std::str::FromStr;
+use crate::WordEntry;
 use crate::character_definition::CategoryId;
+use serde::{Serialize, Deserialize};
 
+const CHAR_DEFINITION_DATA: &'static [u8] = include_bytes!("../dict/unk.bin");
 
 //TODO optimize
+#[derive(Serialize, Deserialize)]
 pub struct UnknownDictionary {
-    category_references: Vec<Vec<u32>>,
-    costs: Vec<WordEntry>,
-//    features: Vec<Vec<String>>,
+    pub category_references: Vec<Vec<u32>>,
+    pub costs: Vec<WordEntry>,
 }
+
 
 #[derive(Debug)]
 pub struct DictionaryEntry {
@@ -17,110 +18,9 @@ pub struct DictionaryEntry {
     left_id: u32,
     right_id: u32,
     word_cost: i32,
-//    part_of_speech: Vec<String>,
-//    other_features: Vec<String>
 }
-
-
-fn parse_dictionary_entry(fields: &[&str]) -> Result<DictionaryEntry, ParsingError> {
-    if fields.len() != 11 {
-        return Err(ParsingError::ContentError(format!("Invalid number of fields. Expect 11, got {}", fields.len())));
-    }
-    let surface = fields[0];
-    let left_id = u32::from_str(fields[1])?;
-    let right_id = u32::from_str(fields[2])?;
-    let word_cost = i32::from_str(fields[3])?;
-//    let part_of_speech: Vec<String> = fields[4..10].iter()
-//        .cloned()
-//        .filter(|&pos| pos != "*")
-//        .map(str::to_string)
-//        .collect();
-//    let other_features: Vec<String> = fields[10..].iter()
-//        .cloned()
-//        .filter(|&pos| pos != "*")
-//        .map(str::to_string)
-//        .collect();
-    Ok(DictionaryEntry {
-        surface: surface.to_string(),
-        left_id,
-        right_id,
-        word_cost,
-//        part_of_speech,
-//        other_features
-    })
-}
-
-
-
-fn make_costs_array(entries: &[DictionaryEntry]) -> Vec<WordEntry> {
-    entries
-        .iter()
-        .map(|e| {
-            assert_eq!(e.left_id, e.right_id);
-            WordEntry {
-                cost_id: e.left_id,
-                word_cost: e.word_cost
-            }
-        })
-        .collect()
-}
-
-
-fn get_entry_id_matching_surface(entries: &[DictionaryEntry], target_surface: &str) -> Vec<u32> {
-    entries
-        .iter()
-        .enumerate()
-        .filter_map(|(entry_id, entry)|
-            if entry.surface == target_surface {
-                Some(entry_id as u32)
-            } else {
-                None
-            })
-        .collect()
-}
-
-fn make_category_references(
-    categories: &[String],
-    entries: &[DictionaryEntry]) -> Vec<Vec<u32>> {
-    categories
-        .iter()
-        .map(|category| get_entry_id_matching_surface(entries, category))
-        .collect()
-}
-//
-//fn make_features(entries: &[DictionaryEntry]) -> Vec<Vec<String>> {
-//    entries
-//        .iter()
-//        .map(|entry| {
-//            let mut features = entry.part_of_speech.clone();
-//            features.extend_from_slice(&entry.other_features[..]);
-//            features
-//        })
-//        .collect()
-//}
 
 impl UnknownDictionary {
-
-    pub fn parse(
-        categories: &[String],
-        file_content: &String) -> Result<UnknownDictionary, ParsingError> {
-        let mut unknown_dict_entries = Vec::new();
-        for line in file_content.lines() {
-            let fields: Vec<&str> = line.split(",").collect::<Vec<&str>>();
-            let entry = parse_dictionary_entry(&fields[..])?;
-            unknown_dict_entries.push(entry);
-        }
-
-        let category_references = make_category_references(categories, &unknown_dict_entries[..]);
-        let costs = make_costs_array(&unknown_dict_entries[..]);
-//        let features = make_features(&unknown_dict_entries[..]);
-
-        Ok(UnknownDictionary {
-            category_references,
-            costs,
-//            features,
-        })
-    }
 
     pub fn word_entry(&self, word_id: u32) -> WordEntry {
         self.costs[word_id as usize]
@@ -132,20 +32,17 @@ impl UnknownDictionary {
     }
 
 
-    pub fn load(char_definitions: &CharacterDefinitions) -> Result<UnknownDictionary, ParsingError> {
-        let unk_def = crate::read_mecab_file("unk.def")?;
-        Self::parse(char_definitions.categories(), &unk_def)
+    pub fn load() -> UnknownDictionary {
+        bincode::deserialize(CHAR_DEFINITION_DATA).unwrap()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::CharacterDefinitions;
-    use super::UnknownDictionary;
+    use crate::unknown_dictionary::UnknownDictionary;
 
     #[test]
     fn test_parse_unknown_dictionary() {
-        let char_defs = CharacterDefinitions::load().unwrap();
-        let _unknown_dict = UnknownDictionary::load(&char_defs).unwrap();
+        let _unknown_dict = UnknownDictionary::load();
     }
 }

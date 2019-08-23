@@ -8,11 +8,11 @@ edition = "2018"
 tantivy-fst = "0.1"
 byteorder = "1.2"
 encoding = "0.2"
-
+serde = {version="1.0", features = ["derive"] }
+bincode = "1.1"
 
 [dev-dependencies]
 criterion = "0.2"
-
 
 [profile.release]
 debug = true
@@ -25,15 +25,6 @@ path = "bin/build_fst.rs"
 [[bin]]
 name = "flamegraph"
 path = "bin/flamegraph.rs"
-
-
-    #[[bin]]
-    #name = "build-cost"
-    #path = "bin/build_cost.rs"
-
-[[bin]]
-name = "build-char-definition"
-path = "bin/build_char_definition.rs"
 
 [[bench]]
 name = "bench"

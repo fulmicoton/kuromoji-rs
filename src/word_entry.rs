@@ -1,8 +1,9 @@
 use std::io;
 use byteorder::{ByteOrder, LittleEndian};
 use byteorder::WriteBytesExt;
+use serde::{Serialize, Deserialize};
 
-#[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Default, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WordEntry {
     pub word_cost: i32,
     pub cost_id: u32,

@@ -2,8 +2,8 @@ mod connection;
 mod viterbi;
 mod word_entry;
 mod prefix_dict;
-mod character_definition;
-mod unknown_dictionary;
+pub mod character_definition;
+pub mod unknown_dictionary;
 
 use std::io;
 use encoding::DecoderTrap;
@@ -11,7 +11,7 @@ use crate::connection::ConnectionCostMatrix;
 use crate::viterbi::{Lattice, Edge};
 pub use crate::word_entry::WordEntry;
 use crate::prefix_dict::PrefixDict;
-pub use crate::character_definition::{CharacterDefinitions, CharacterDefinitionsBuilder};
+pub use crate::character_definition::CharacterDefinitions;
 use std::path::Path;
 use std::fs::File;
 use std::io::Read;
@@ -106,7 +106,7 @@ impl Mode {
     }
 }
 
-pub(crate) fn read_mecab_file(filename: &'static str) -> Result<String, ParsingError> {
+pub fn read_mecab_file(filename: &'static str) -> Result<String, ParsingError> {
     let path = Path::new( "mecab-ipadic").join(Path::new(filename));
     let mut input_read = File::open(path)?;
     let mut buffer = Vec::new();
@@ -130,9 +130,9 @@ impl Tokenizer {
     pub fn new() -> Tokenizer {
         let dict = PrefixDict::default();
         let cost_matrix = ConnectionCostMatrix::load_default();
-        let char_definitions = CharacterDefinitions::load().unwrap();
+        let char_definitions = CharacterDefinitions::load();
         let unknown_dictionary =
-            UnknownDictionary::load(&char_definitions).unwrap();
+            UnknownDictionary::load();
         Tokenizer {
             dict,
             cost_matrix,
