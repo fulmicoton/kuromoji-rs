@@ -1,32 +1,10 @@
-use std::io;
-use std::path::Path;
-use std::fs::File;
-use std::io::{BufReader, BufRead};
 use std::collections::HashMap;
-use std::fmt::Debug;
 use encoding::all::UTF_16LE;
 use encoding::{Encoding, DecoderTrap};
 use byteorder::{ByteOrder, LittleEndian};
+use crate::ParsingError;
 
 const DEFAULT_CATEGORY_NAME: &'static str = "DEFAULT";
-
-#[derive(Debug)]
-pub enum ParsingError {
-    Io(io::Error),
-    ParsingError(String)
-}
-
-impl ParsingError {
-    fn from_error<D: Debug>(error: D) -> ParsingError {
-        ParsingError::ParsingError(format!("{:?}", error))
-    }
-}
-
-impl From<io::Error> for ParsingError {
-    fn from(io_err: io::Error) -> Self {
-        ParsingError::Io(io_err)
-    }
-}
 
 #[derive(Default)]
 pub struct CharacterDefinitionsBuilder {
@@ -70,10 +48,8 @@ impl CharacterDefinitionsBuilder {
             .or_insert(CategoryId(num_categories))
     }
 
-    pub fn parse_read<R: io::Read>(&mut self, input_read: R) -> Result<(), ParsingError> {
-        let file = BufReader::new(input_read);
-        for line_res in file.lines() {
-            let line = line_res?;
+    pub fn parse(&mut self, content: &String) -> Result<(), ParsingError> {
+        for line in content.lines() {
             let line_str = line.split('#').next().unwrap().trim();
             if line_str.is_empty() {
                 continue;
@@ -105,10 +81,9 @@ impl CharacterDefinitionsBuilder {
                 higher_bound = parse_hex_codepoint(range_bounds[1])?;
             }
             _ => {
-                return Err(ParsingError::ParsingError(format!("Invalid line: {}", line)));
+                return Err(ParsingError::ContentError(format!("Invalid line: {}", line)));
             }
         }
-        println!("{:?} =>  {}..{}", line, lower_bound, higher_bound);
         let category_ids: Vec<CategoryId> = fields[1..]
             .iter()
             .map(|category| self.category_id(category))
@@ -120,7 +95,7 @@ impl CharacterDefinitionsBuilder {
     fn parse_category(&mut self, line: &str) -> Result<(), ParsingError> {
         let fields = line.split_ascii_whitespace().collect::<Vec<&str>>();
         if fields.len() != 4 {
-            return Err(ParsingError::ParsingError(format!("Expected 4 fields. Got {} in {}", fields.len(), line)));
+            return Err(ParsingError::ContentError(format!("Expected 4 fields. Got {} in {}", fields.len(), line)));
         }
         let invoke = fields[1].parse::<u32>().map_err(ParsingError::from_error)? == 1;
         let group = fields[2].parse::<u32>().map_err(ParsingError::from_error)? == 1;
@@ -163,16 +138,11 @@ impl CharacterDefinitions {
         &self.category_names[..]
     }
 
-    pub fn parse(dir: &Path) -> Result<CharacterDefinitions, ParsingError> {
+    pub fn load() -> Result<CharacterDefinitions, ParsingError> {
         let mut char_definitions_builder = CharacterDefinitionsBuilder::default();
-        let path = dir.join(Path::new("char.def"));
-        let input_read = File::open(path)?;
-        char_definitions_builder.parse_read(input_read)?;
+        let char_def = crate::read_mecab_file("char.def")?;
+        char_definitions_builder.parse(&char_def)?;
         Ok(char_definitions_builder.build())
-    }
-
-    pub fn load() -> CharacterDefinitions {
-        Self::parse(crate::ipadic_path()).unwrap()
     }
     pub fn lookup_definition(&self, category_id: CategoryId) -> &CategoryData {
         &self.category_definitions[category_id.0]
@@ -200,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_char_definitions() {
-        let char_definitions = CharacterDefinitions::load();
+        let char_definitions = CharacterDefinitions::load().unwrap();
         {
             let categories = char_definitions.lookup_categories('あ');
             assert_eq!(categories.len(), 1);

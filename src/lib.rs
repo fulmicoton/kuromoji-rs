@@ -18,19 +18,34 @@ use std::io::Read;
 use encoding::Encoding;
 use std::num::ParseIntError;
 use crate::unknown_dictionary::UnknownDictionary;
-
-const IPADIC_PATH: &'static str = "ipadic/mecab-ipadic-2.7.0-20070801";
-
-pub(crate) fn ipadic_path()-> &'static Path {
-    Path::new(IPADIC_PATH)
-}
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub enum ParsingError {
     Encoding,
     IoError(io::Error),
-    ContentError
+    ContentError(String)
 }
+
+
+impl ParsingError {
+    fn from_error<D: Debug>(error: D) -> ParsingError {
+        ParsingError::ContentError(format!("{:?}", error))
+    }
+}
+
+impl From<io::Error> for ParsingError {
+    fn from(io_err: io::Error) -> Self {
+        ParsingError::IoError(io_err)
+    }
+}
+
+impl From<ParseIntError> for ParsingError {
+    fn from(parse_err: ParseIntError) -> Self {
+        ParsingError::from_error(parse_err)
+    }
+}
+
 
 
 #[derive(Clone, Debug)]
@@ -91,19 +106,8 @@ impl Mode {
     }
 }
 
-impl From<ParseIntError> for ParsingError {
-    fn from(_parse_err: ParseIntError) -> Self {
-        ParsingError::ContentError
-    }
-}
-
-impl From<io::Error> for ParsingError {
-    fn from(io_err: io::Error) -> Self {
-        ParsingError::IoError(io_err)
-    }
-}
-
-pub(crate) fn read_all(path: &Path) -> Result<String, ParsingError> {
+pub(crate) fn read_mecab_file(filename: &'static str) -> Result<String, ParsingError> {
+    let path = Path::new( "mecab-ipadic").join(Path::new(filename));
     let mut input_read = File::open(path)?;
     let mut buffer = Vec::new();
     input_read.read_to_end(&mut buffer)?;
@@ -126,7 +130,7 @@ impl Tokenizer {
     pub fn new() -> Tokenizer {
         let dict = PrefixDict::default();
         let cost_matrix = ConnectionCostMatrix::load_default();
-        let char_definitions = CharacterDefinitions::load();
+        let char_definitions = CharacterDefinitions::load().unwrap();
         let unknown_dictionary =
             UnknownDictionary::load(&char_definitions).unwrap();
         Tokenizer {

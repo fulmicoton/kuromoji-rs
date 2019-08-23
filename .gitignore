@@ -1,4 +1,5 @@
+flamegraph*
 .idea
-/target/
-**/*.rs.bk
+target
 Cargo.lock
+perf.data*
