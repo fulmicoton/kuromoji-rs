@@ -262,8 +262,8 @@ mod tests {
     fn test_wordentry() {
         fn test_serdeser(word_cost: i32, cost_id: u32) {
             let word_entry = WordEntry {
-                word_cost: word_cost,
-                cost_id: cost_id,
+                word_cost,
+                cost_id,
             };
             assert_eq!(
                 word_entry,
@@ -272,6 +272,5 @@ mod tests {
         }
         test_serdeser(-1i32, 0u32);
         test_serdeser(-1i32, 1u32);
-        // test_serdeser(-1000000000i32, 3000000000u32);
     }
 }

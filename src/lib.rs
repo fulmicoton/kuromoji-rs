@@ -127,44 +127,80 @@ pub struct Tokenizer {
 }
 
 impl Tokenizer {
-    pub fn new() -> Tokenizer {
+    pub fn new(mode: Mode) -> Tokenizer {
         let dict = PrefixDict::default();
         let cost_matrix = ConnectionCostMatrix::load_default();
         let char_definitions = CharacterDefinitions::load();
-        let unknown_dictionary =
-            UnknownDictionary::load();
+        let unknown_dictionary = UnknownDictionary::load();
         Tokenizer {
             dict,
             cost_matrix,
             lattice: Lattice::default(),
             char_definitions,
             unknown_dictionary,
-            mode: Mode::Search(Penalty::default()),
+            mode,
             offsets: Vec::new()
         }
     }
 
-    pub fn tokenize_offsets(&mut self, text: &str) -> &[usize] {
+    pub fn for_search() -> Tokenizer {
+        Self::new(Mode::Search(Penalty::default()))
+    }
+
+
+    pub fn normal() -> Tokenizer {
+        Self::new(Mode::Normal)
+    }
+
+
+    /// Returns an array of offsets that mark the beginning of each tokens,
+    /// in bytes.
+    ///
+    /// For instance
+    /// e.g. "僕は'
+    ///
+    /// returns the array `[0, 3]`
+    ///
+    /// The array, always starts with 0, except if you tokenize the empty string,
+    /// in which case an empty array is returned.
+    ///
+    /// Whitespaces also count as tokens.
+    pub(crate) fn tokenize_offsets(&mut self, text: &str) -> &[usize] {
+        if text.is_empty() {
+            return &[];
+        }
         self.lattice.set_text(&self.dict, &self.char_definitions, &self.unknown_dictionary, text, &self.mode);
         self.lattice.calculate_path_costs(&self.cost_matrix, &self.mode);
         self.lattice.tokens_offset(&mut self.offsets);
         &self.offsets[..]
     }
 
-    pub fn tokenize<'a>(&'a mut self, text: &'a str) -> impl Iterator<Item=&'a str> + 'a {
-        self.tokenize_offsets(text);
-        self.offsets.push(text.len());
-        self.offsets
-            .windows(2)
-            .map(move|arr| &text[arr[0]..arr[1]])
+    pub fn tokenize<'a>(&'a mut self, mut text: &'a str) -> impl Iterator<Item=&'a str> + 'a {
+        let mut tokens = Vec::new();
+        while let Some(split_idx) = text.find(|c| c=='。' || c == '、') {
+            let current_fragment = &text[..split_idx + 3];
+            self.tokenize_offsets(current_fragment);
+            self.offsets.push(current_fragment.len());
+            for token in self.offsets
+                .windows(2)
+                .map(move|arr| &text[arr[0]..arr[1]]) {
+                tokens.push(token);
+            }
+            text = &text[split_idx+3..];
+        }
+        if !text.is_empty() {
+            self.tokenize_offsets(text);
+            self.offsets.push(text.len());
+            for token in self.offsets
+                .windows(2)
+                .map(move|arr| &text[arr[0]..arr[1]]) {
+                tokens.push(token);
+            }
+        }
+        tokens.into_iter()
     }
 }
 
-impl Default for Tokenizer {
-    fn default() -> Tokenizer {
-        Tokenizer::new()
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -172,39 +208,72 @@ mod tests {
     use super::Tokenizer;
 
     #[test]
+    fn test_empty() {
+        let mut tokenizer = Tokenizer::for_search();
+        let tokens = tokenizer.tokenize_offsets("");
+        assert_eq!(tokens, &[]);
+    }
+
+    #[test]
+    fn test_space() {
+        let mut tokenizer = Tokenizer::for_search();
+        let tokens = tokenizer.tokenize_offsets(" ");
+        assert_eq!(tokens, &[0]);
+    }
+
+
+    #[test]
+    fn test_boku_ha() {
+        let mut tokenizer = Tokenizer::for_search();
+        let tokens = tokenizer.tokenize_offsets("僕は");
+        assert_eq!(tokens, &[0, 3]);
+    }
+
+    #[test]
     fn test_tokenize() {
-        let mut tokenizer = Tokenizer::new();
+        let mut tokenizer = Tokenizer::for_search();
         let tokens = tokenizer.tokenize_offsets("俺はまだ本気出してないだけ。");
         assert_eq!(tokens, &[0, 3, 6, 12, 18, 24, 27, 33, 39]);
     }
 
     #[test]
     fn test_tokenize2() {
-        let mut tokenizer = Tokenizer::new();
+        let mut tokenizer = Tokenizer::for_search();
         let tokens: Vec<&str> = tokenizer.tokenize("私の名前はマズレル野恵美です。").collect();
         assert_eq!(tokens, vec!["私", "の", "名前", "は", "マズレル", "野", "恵美", "です", "。"]);
     }
 
     #[test]
     fn test_tokenize_junk() {
-        let mut tokenizer = Tokenizer::new();
+        let mut tokenizer = Tokenizer::for_search();
         let tokens: Vec<&str> = tokenizer.tokenize("関西国werwerママママ空港").collect();
         assert_eq!(tokens, vec!["関西", "国", "werwer", "ママ", "ママ", "空港"]);
     }
 
     #[test]
     fn test_tokenize_search_mode() {
-        let mut tokenizer = Tokenizer::new();
+        let mut tokenizer = Tokenizer::for_search();
         let tokens: Vec<&str> = tokenizer.tokenize("関西国際空港").collect();
         assert_eq!(tokens, vec!["関西", "国際", "空港"]);
     }
 
     #[test]
     fn test_tokenize_sumomomomo() {
-        let mut tokenizer = Tokenizer::new();
+        let mut tokenizer = Tokenizer::for_search();
         let tokens: Vec<&str> = tokenizer.tokenize("すもももももももものうち").collect();
         assert_eq!(tokens, vec!["すもも", "も", "もも", "も", "もも", "の", "うち"]);
     }
 
+    #[test]
+    fn test_tokenize_real() {
+        let mut tokenizer = Tokenizer::normal();
+        let tokens: Vec<&str> = tokenizer.tokenize(
+            "本項で解説する地方病とは、山梨県における日本住血吸虫症の呼称であり、\
+            長い間その原因が明らかにならず住民を苦しめた感染症である。").collect();
+        assert_eq!(tokens, vec!["本", "項", "で", "解説", "する", "地方",
+                                "病", "と", "は", "、", "山梨", "県", "における",
+                                "日本", "住", "血", "吸", "虫", "症", "の",
+                                "呼称", "で", "あり", "、", "長い", "間", "その", "原因", "が", "明らか", "に", "なら", "ず", "住民", "を", "苦しめ", "た", "感染", "症", "で", "ある", "。"]);
+    }
 
 }

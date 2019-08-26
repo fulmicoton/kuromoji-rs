@@ -26,6 +26,10 @@ path = "bin/build_fst.rs"
 name = "flamegraph"
 path = "bin/flamegraph.rs"
 
+[[bin]]
+name = "tester"
+path = "bin/tester.rs"
+
 [[bench]]
 name = "bench"
 harness = false
