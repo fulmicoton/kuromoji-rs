@@ -5,7 +5,7 @@ use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
 use kuromoji::character_definition::{CategoryData, CategoryId};
 use kuromoji::unknown_dictionary::UnknownDictionary;
-use kuromoji::CharacterDefinitions;
+use kuromoji::{CharacterDefinitions, WordId};
 use kuromoji::{WordDetail, WordEntry};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
@@ -173,7 +173,7 @@ fn build_dict() -> Result<(), ParsingError> {
             .entry(row.surface_form.to_string())
             .or_insert_with(Vec::new)
             .push(WordEntry {
-                word_id: row_id as u32,
+                word_id: WordId(row_id as u32),
                 word_cost: row.word_cost as i16,
                 cost_id: row.left_id as u16,
             });
@@ -409,7 +409,7 @@ fn make_costs_array(entries: &[DictionaryEntry]) -> Vec<WordEntry> {
         .map(|e| {
             assert_eq!(e.left_id, e.right_id);
             WordEntry {
-                word_id: std::u32::MAX,
+                word_id: WordId(std::u32::MAX),
                 cost_id: e.left_id as u16,
                 word_cost: e.word_cost as i16,
             }

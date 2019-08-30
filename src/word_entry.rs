@@ -2,6 +2,7 @@ use byteorder::WriteBytesExt;
 use byteorder::{ByteOrder, LittleEndian};
 use serde::{Deserialize, Serialize};
 use std::io;
+use crate::WordId;
 
 const WORDS_DATA: &'static [u8] = include_bytes!("../dict/dict.words");
 const WORDS_IDX_DATA: &'static [u8] = include_bytes!("../dict/dict.wordsidx");
@@ -9,13 +10,13 @@ const WORDS_IDX_DATA: &'static [u8] = include_bytes!("../dict/dict.wordsidx");
 pub struct WordDictionary;
 
 impl WordDictionary {
-    pub fn load_word_id(word_id: u32) -> WordDetail {
-        if word_id == std::u32::MAX {
+    pub fn load_word_id(word_id: WordId) -> WordDetail {
+        if word_id.is_unknown() {
             return WordDetail {
                 reading: "UNK".to_string(),
             };
         }
-        let idx = LittleEndian::read_u32(&WORDS_IDX_DATA[4 * word_id as usize..][..4]);
+        let idx = LittleEndian::read_u32(&WORDS_IDX_DATA[4 * word_id.0 as usize..][..4]);
         let data = &WORDS_DATA[idx as usize..];
         let word_entry = bincode::deserialize_from(data).unwrap();
         word_entry
@@ -29,7 +30,7 @@ pub struct WordDetail {
 
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WordEntry {
-    pub word_id: u32,
+    pub word_id: WordId,
     pub word_cost: i16,
     pub cost_id: u16,
 }
@@ -46,14 +47,14 @@ impl WordEntry {
     }
 
     pub fn serialize<W: io::Write>(&self, wtr: &mut W) -> io::Result<()> {
-        wtr.write_u32::<LittleEndian>(self.word_id)?;
+        wtr.write_u32::<LittleEndian>(self.word_id.0)?;
         wtr.write_i16::<LittleEndian>(self.word_cost)?;
         wtr.write_u16::<LittleEndian>(self.cost_id)?;
         Ok(())
     }
 
     pub fn deserialize(data: &[u8]) -> WordEntry {
-        let word_id = LittleEndian::read_u32(&data[0..4]);
+        let word_id = WordId(LittleEndian::read_u32(&data[0..4]));
         let word_cost = LittleEndian::read_i16(&data[4..6]);
         let cost_id = LittleEndian::read_u16(&data[6..8]);
         WordEntry {
@@ -67,14 +68,14 @@ impl WordEntry {
 #[cfg(test)]
 mod tests {
     use super::WordDictionary;
-    use crate::WordDetail;
+    use crate::{WordDetail, WordId};
     use crate::WordEntry;
 
     #[test]
     fn test_word_entry() {
         let mut buffer = Vec::new();
         let word_entry = WordEntry {
-            word_id: 1u32,
+            word_id: WordId(1u32),
             word_cost: -17i16,
             cost_id: 1411u16,
         };
@@ -86,9 +87,9 @@ mod tests {
 
     #[test]
     fn test_dictionary() {
-        let word_detail = WordDictionary::load_word_id(0u32);
+        let word_detail = WordDictionary::load_word_id(WordId(0u32));
         assert_eq!(&word_detail.reading, "ティーシャツ");
-        let word_detail = WordDictionary::load_word_id(1u32);
+        let word_detail = WordDictionary::load_word_id(WordId(1u32));
         assert_eq!(word_detail.reading, "¨".to_string());
     }
 }

@@ -81,7 +81,7 @@ mod tests {
     fn test_fst_prefix_tilde() {
         let prefix_dict = PrefixDict::default();
         let count_prefix = prefix_dict.prefix("〜").count();
-        assert_eq!(count_prefix, 1);
+        assert_eq!(count_prefix, 2);
     }
 
     #[test]
@@ -94,12 +94,6 @@ mod tests {
         assert_eq!(count_prefix, 1);
     }
 
-    #[test]
-    fn test_fst_minus() {
-        let prefix_dict = PrefixDict::default();
-        let count_prefix = prefix_dict.prefix("−").count();
-        assert_eq!(count_prefix, 1);
-    }
 
     #[test]
     fn test_fst_prefix_asterisk_symbol() {
@@ -107,31 +101,4 @@ mod tests {
         let count_prefix = prefix_dict.prefix("※").count();
         assert_eq!(count_prefix, 1);
     }
-
-    /*
-    #[test]
-    fn test_fst_prefix() {
-        let mut buffer = Vec::new();
-        let mut builder =
-            PrefixDictBuilder::new(&mut buffer).unwrap();
-        builder.insert(b"aaa", &[
-            WordEntry { word_cost: 0, cost_id: 1 },
-            WordEntry {word_cost: 0, cost_id: 2 }
-        ]).unwrap();
-        builder.insert(b"aaab", &[
-            WordEntry { word_cost: 0, cost_id: 3 }
-        ]).unwrap();
-        builder.finish().unwrap();
-        let fst = PrefixDict:(buffer).unwrap();
-        assert_eq!(fst.prefix("aaabc").collect::<Vec<_>>(),
-            vec![(3, WordEntry { word_cost: 0, cost_id: 1 }),
-                  (3, WordEntry { word_cost: 0, cost_id: 2 }),
-                  (4, WordEntry {word_cost: 0, cost_id: 3 })]
-        );
-        assert_eq!(fst.prefix("aaac").collect::<Vec<_>>(),
-                   vec![(3, WordEntry { word_cost: 0, cost_id: 1 }),
-                        (3, WordEntry { word_cost: 0, cost_id: 2 })]
-        );
-    }
-    */
 }

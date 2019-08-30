@@ -102,8 +102,8 @@ mod tests {
         {
             char_definitions.lookup_categories('一', &mut v);
             assert_eq!(v.len(), 2);
-            assert_eq!(char_definitions.category_name(v[0]), "KANJINUMERIC");
-            assert_eq!(char_definitions.category_name(v[1]), "KANJI");
+            assert_eq!(char_definitions.category_name(v[0]), "KANJI");
+            assert_eq!(char_definitions.category_name(v[1]), "KANJINUMERIC");
         }
     }
 

@@ -3,7 +3,7 @@ use crate::connection::ConnectionCostMatrix;
 use crate::prefix_dict::PrefixDict;
 use crate::unknown_dictionary::UnknownDictionary;
 use crate::word_entry::WordDictionary;
-use crate::{CharacterDefinitions, Mode, WordDetail, WordEntry};
+use crate::{CharacterDefinitions, Mode, WordDetail, WordEntry, WordId};
 use std::u32;
 
 const EOS_NODE: EdgeId = EdgeId(1u32);
@@ -255,7 +255,7 @@ impl Lattice {
         }
     }
 
-    pub fn tokens_offset(&self, offsets: &mut Vec<(usize, u32)>) {
+    pub fn tokens_offset(&self, offsets: &mut Vec<(usize, WordId)>) {
         offsets.clear();
         let mut edge_id = EOS_NODE;
         let edge = self.edge(EOS_NODE);
