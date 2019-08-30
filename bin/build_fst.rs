@@ -3,7 +3,7 @@ use std::io::{self, Write, Read};
 use std::str::FromStr;
 use std::u32;
 use tantivy_fst::MapBuilder;
-use kuromoji::WordEntry;
+use kuromoji::{WordEntry, WordDetail};
 use std::collections::{BTreeMap, HashMap};
 use byteorder::{WriteBytesExt, LittleEndian};
 use kuromoji::CharacterDefinitions;
@@ -19,7 +19,7 @@ use kuromoji::unknown_dictionary::UnknownDictionary;
 
 
 fn read_mecab_file(filename: &'static str) -> Result<String, ParsingError> {
-    let path = Path::new( "mecab-ipadic").join(Path::new(filename));
+    let path = Path::new( "mecab-ipadic2").join(Path::new(filename));
     let mut input_read = File::open(path)?;
     let mut buffer = Vec::new();
     input_read.read_to_end(&mut buffer)?;
@@ -67,23 +67,23 @@ pub struct CSVRow<'a> {
     pos_level3: &'a str,
     pos_level4: &'a str,
 
-    conjugation_type: &'a str,
-    conjugate_form: &'a str,
+    pub conjugation_type: &'a str,
+    pub conjugate_form: &'a str,
 
-    base_form: &'a str,
-    reading: &'a str,
+    pub base_form: &'a str,
+    pub reading: &'a str,
     pronunciation: &'a str,
 }
 
 impl<'a> CSVRow<'a> {
     fn from_line(line: &'a String) -> CSVRow<'a> {
         let fields: Vec<_> = line.split(",").collect();
+        let word_cost = i32::from_str(&fields[3]).expect("failed to parse wordost");
         CSVRow {
             surface_form: fields[0],
             left_id: u32::from_str(&fields[1]).expect("failed to parse left_id"),
             right_id: u32::from_str(&fields[2]).expect("failed to parse right_id"),
             word_cost: i32::from_str(&fields[3]).expect("failed to parse wordost"),
-
             pos_level1: fields[4],
             pos_level2: fields[5],
             pos_level3: fields[6],
@@ -139,6 +139,17 @@ fn build_dict() -> Result<(), ParsingError> {
         .flat_map(|file_data: &String| {
             file_data.lines().map(|line| line.to_string())
         })
+        .map(|line| line.chars().map(|c| {
+            if c == '―' {
+                // yeah for EUC_JP and ambiguous unicode 8012 vs 8013
+                return '—';
+            } else if c == '～' {
+                // same bullshit as above between for 12316 vs 65374
+                return '〜';
+            } else {
+                return c;
+            }
+        }).collect::<String>())
         .collect();
     let mut rows: Vec<CSVRow> = lines
         .iter()
@@ -153,15 +164,36 @@ fn build_dict() -> Result<(), ParsingError> {
 
     let mut word_entry_map: BTreeMap<String, Vec<WordEntry>> = BTreeMap::new();
 
-    for row in &rows {
+    for (row_id, row) in rows.iter().enumerate() {
+        if row.word_cost == 3978 {
+            println!("{} -> {}", row.surface_form, row.surface_form.chars().next().unwrap() as u32);
+        }
         word_entry_map
             .entry(row.surface_form.to_string())
             .or_insert_with(Vec::new)
             .push(WordEntry {
-                word_cost: row.word_cost,
-                cost_id: row.left_id,
+                word_id: row_id as u32,
+                word_cost: row.word_cost as i16,
+                cost_id: row.left_id as u16,
             });
     }
+
+    let mut wtr_words = io::BufWriter::new(File::create("dict/dict.words")?);
+    let mut wtr_words_idx =io::BufWriter::new(File::create("dict/dict.wordsidx")?);
+    let mut words_buffer = Vec::new();
+    for  row in rows.iter() {
+        let word = WordDetail {
+            reading: row.reading.to_string()
+        };
+        let offset = words_buffer.len();
+        wtr_words_idx.write_u32::<LittleEndian>(offset as u32)?;
+        bincode::serialize_into(&mut words_buffer, &word).unwrap();
+    }
+
+
+    wtr_words.write_all(&words_buffer[..])?;
+    wtr_words.flush()?;
+    wtr_words_idx.flush()?;
 
     let mut id = 0u64;
 
@@ -298,6 +330,7 @@ impl CharacterDefinitionsBuilder {
             .iter()
             .map(|category| self.category_id(category))
             .collect();
+        println!("{} - {} => {:?}", lower_bound, higher_bound, &fields[1..]);
         self.char_ranges.push((lower_bound, higher_bound, category_ids));
         Ok(())
     }
@@ -370,8 +403,9 @@ fn make_costs_array(entries: &[DictionaryEntry]) -> Vec<WordEntry> {
         .map(|e| {
             assert_eq!(e.left_id, e.right_id);
             WordEntry {
-                cost_id: e.left_id,
-                word_cost: e.word_cost
+                word_id: std::u32::MAX,
+                cost_id: e.left_id as u16,
+                word_cost: e.word_cost as i16
             }
         })
         .collect()
@@ -442,9 +476,9 @@ fn build_unk(chardef: &CharacterDefinitions) -> Result<(), ParsingError> {
 }
 
 fn main() -> Result<(), ParsingError> {
-    build_dict()?;
-    build_cost_matrix()?;
     let chardef = build_chardef()?;
     build_unk(&chardef)?;
+    build_dict()?;
+    build_cost_matrix()?;
     Ok(())
 }

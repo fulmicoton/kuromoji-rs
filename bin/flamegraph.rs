@@ -23,8 +23,8 @@ P2P通信によってウェブコンテンツのインデックスを多数の�
 ひとつの検索ワードを複数の検索エンジンで検索することをメタ検索という（横断検索エンジンと呼ぶこともある）。 詳細は「メタ検索エンジン」を参照のこと。"#;
 
 fn main() {
-    let mut tokenizer = Tokenizer::new();
+    let mut tokenizer = Tokenizer::for_search();
     for _ in 0..10_000 {
-        tokenizer.tokenize_offsets(TEXT);
+//        tokenizer.tokenize_offsets(TEXT);
     }
 }

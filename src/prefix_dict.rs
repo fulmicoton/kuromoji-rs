@@ -70,11 +70,43 @@ mod tests {
     use super::PrefixDict;
 
     #[test]
-    fn test_fst_prefix() {
+    fn test_fst_prefix_2() {
         let prefix_dict = PrefixDict::default();
-        for (a, word_entry) in prefix_dict.prefix("下北沢") {
-            println!("{} {:?}", a, word_entry)
-        }
+        let count_prefix = prefix_dict.prefix("—でも").count();
+        assert_eq!(count_prefix, 1);
+    }
+
+    #[test]
+    fn test_fst_prefix_tilde() {
+        let prefix_dict = PrefixDict::default();
+        let count_prefix = prefix_dict.prefix("〜").count();
+        assert_eq!(count_prefix, 1);
+    }
+
+    #[test]
+    fn test_fst_ikkagetsu() {
+        let prefix_dict = PrefixDict::default();
+        let count_prefix = prefix_dict.prefix("ー").count();
+        assert_eq!(count_prefix, 0);
+
+        let count_prefix = prefix_dict.prefix("ヶ月").count();
+        assert_eq!(count_prefix, 1);
+    }
+
+
+    #[test]
+    fn test_fst_minus() {
+        let prefix_dict = PrefixDict::default();
+        let count_prefix = prefix_dict.prefix("−").count();
+        assert_eq!(count_prefix, 1);
+    }
+
+
+    #[test]
+    fn test_fst_prefix_asterisk_symbol() {
+        let prefix_dict = PrefixDict::default();
+        let count_prefix = prefix_dict.prefix("※").count();
+        assert_eq!(count_prefix, 1);
     }
 
     /*

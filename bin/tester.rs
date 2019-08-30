@@ -14,11 +14,11 @@ fn main() -> io::Result<()> {
 
     let mut wtr = BufWriter::new(File::create(output)?);
     let mut tokenizer = Tokenizer::normal();
+    let mut output_line = String::new();
     for line_res in buff.lines() {
+        output_line.clear();
         let line = line_res?;
-        println!("<{}>", line);
-        let mut output_line = String::new();
-        for token in tokenizer.tokenize(&line) {
+        for token in tokenizer.tokenize_str(&line) {
             output_line.push_str(token);
             output_line.push_str("---");
         }

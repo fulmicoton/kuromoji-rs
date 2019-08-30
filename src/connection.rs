@@ -17,7 +17,7 @@ impl ConnectionCostMatrix {
     }
 
     pub fn cost(&self, backward_id: u32, forward_id: u32) -> i32 {
-        let cost_id = (backward_id + forward_id * self.backward_size) as usize;
+        let cost_id = (forward_id + backward_id * self.backward_size) as usize;
         LittleEndian::read_i16(&self.costs_data[cost_id * 2..]) as i32
     }
 }
