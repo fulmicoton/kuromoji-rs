@@ -1,9 +1,7 @@
-use std::io;
-use byteorder::{ByteOrder, LittleEndian};
 use byteorder::WriteBytesExt;
-use serde::{Serialize, Deserialize};
-
-
+use byteorder::{ByteOrder, LittleEndian};
+use serde::{Deserialize, Serialize};
+use std::io;
 
 const WORDS_DATA: &'static [u8] = include_bytes!("../dict/dict.words");
 const WORDS_IDX_DATA: &'static [u8] = include_bytes!("../dict/dict.wordsidx");
@@ -14,7 +12,7 @@ impl WordDictionary {
     pub fn load_word_id(word_id: u32) -> WordDetail {
         if word_id == std::u32::MAX {
             return WordDetail {
-                reading: "UNK".to_string()
+                reading: "UNK".to_string(),
             };
         }
         let idx = LittleEndian::read_u32(&WORDS_IDX_DATA[4 * word_id as usize..][..4]);
@@ -23,7 +21,6 @@ impl WordDictionary {
         word_entry
     }
 }
-
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WordDetail {
@@ -38,7 +35,6 @@ pub struct WordEntry {
 }
 
 impl WordEntry {
-
     pub const SERIALIZED_LEN: usize = 8;
 
     pub fn left_id(&self) -> u32 {
@@ -56,7 +52,6 @@ impl WordEntry {
         Ok(())
     }
 
-
     pub fn deserialize(data: &[u8]) -> WordEntry {
         let word_id = LittleEndian::read_u32(&data[0..4]);
         let word_cost = LittleEndian::read_i16(&data[4..6]);
@@ -64,16 +59,16 @@ impl WordEntry {
         WordEntry {
             word_id,
             word_cost,
-            cost_id
+            cost_id,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::WordEntry;
     use super::WordDictionary;
     use crate::WordDetail;
+    use crate::WordEntry;
 
     #[test]
     fn test_word_entry() {
@@ -81,7 +76,7 @@ mod tests {
         let word_entry = WordEntry {
             word_id: 1u32,
             word_cost: -17i16,
-            cost_id: 1411u16
+            cost_id: 1411u16,
         };
         word_entry.serialize(&mut buffer).unwrap();
         assert_eq!(WordEntry::SERIALIZED_LEN, buffer.len());
@@ -89,13 +84,11 @@ mod tests {
         assert_eq!(word_entry, word_entry2);
     }
 
-
     #[test]
     fn test_dictionary() {
         let word_detail = WordDictionary::load_word_id(0u32);
         assert_eq!(&word_detail.reading, "ティーシャツ");
         let word_detail = WordDictionary::load_word_id(1u32);
         assert_eq!(word_detail.reading, "¨".to_string());
-
     }
 }

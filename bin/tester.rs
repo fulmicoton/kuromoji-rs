@@ -1,8 +1,8 @@
+use kuromoji::Tokenizer;
 use std::env;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, BufRead, BufWriter, Write};
-use kuromoji::Tokenizer;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 
 fn main() -> io::Result<()> {
     let mut args_it = env::args();

@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main};
 use criterion::Criterion;
+use criterion::{criterion_group, criterion_main};
 
 use kuromoji::Tokenizer;
 

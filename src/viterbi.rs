@@ -1,10 +1,10 @@
-use crate::connection::ConnectionCostMatrix;
-use crate::{WordEntry, CharacterDefinitions, Mode, WordDetail};
-use std::u32;
-use crate::prefix_dict::PrefixDict;
 use crate::character_definition::CategoryId;
+use crate::connection::ConnectionCostMatrix;
+use crate::prefix_dict::PrefixDict;
 use crate::unknown_dictionary::UnknownDictionary;
 use crate::word_entry::WordDictionary;
+use crate::{CharacterDefinitions, Mode, WordDetail, WordEntry};
+use std::u32;
 
 const EOS_NODE: EdgeId = EdgeId(1u32);
 
@@ -54,15 +54,13 @@ pub struct Lattice {
     ends_at: Vec<Vec<EdgeId>>,
 }
 
-
 fn is_kanji(c: char) -> bool {
     let c = c as u32;
     (c >= 19968 && c <= 40879)
 }
 
 fn is_kanji_only(s: &str) -> bool {
-    s.chars()
-     .all(is_kanji)
+    s.chars().all(is_kanji)
 }
 
 impl Lattice {
@@ -87,12 +85,14 @@ impl Lattice {
     }
 
     #[inline(never)]
-    pub fn set_text(&mut self,
-                    dict: &PrefixDict,
-                    char_definitions: &CharacterDefinitions,
-                    unknown_dictionary: &UnknownDictionary,
-                    text: &str,
-                    search_mode: &Mode) {
+    pub fn set_text(
+        &mut self,
+        dict: &PrefixDict,
+        char_definitions: &CharacterDefinitions,
+        unknown_dictionary: &UnknownDictionary,
+        text: &str,
+        search_mode: &Mode,
+    ) {
         let len = text.len();
         self.set_capacity(len);
 
@@ -127,37 +127,49 @@ impl Lattice {
                     start_index: start as u32,
                     stop_index: (start + prefix_len) as u32,
                     path_cost: i32::max_value(),
-                    kanji_only: is_kanji_only(&suffix[..prefix_len])
+                    kanji_only: is_kanji_only(&suffix[..prefix_len]),
                 };
-                self.add_edge_in_lattice( edge);
+                self.add_edge_in_lattice(edge);
                 found = true;
             }
 
             // In the case of normal mode, it doesn't process unknown word greedily.
-            if search_mode.is_search() || unknown_word_end.map(|index| index <= start).unwrap_or(true) {
+            if search_mode.is_search()
+                || unknown_word_end.map(|index| index <= start).unwrap_or(true)
+            {
                 if let Some(first_char) = suffix.chars().next() {
                     let mut categories = vec![];
                     char_definitions.lookup_categories(first_char, &mut categories);
                     for (category_ord, &category) in categories.iter().enumerate() {
-                        unknown_word_end = self.process_unknown_word(char_definitions, unknown_dictionary, category, category_ord, unknown_word_end, start, suffix, found);
+                        unknown_word_end = self.process_unknown_word(
+                            char_definitions,
+                            unknown_dictionary,
+                            category,
+                            category_ord,
+                            unknown_word_end,
+                            start,
+                            suffix,
+                            found,
+                        );
                     }
                 }
             }
         }
     }
 
-    fn process_unknown_word(&mut self,
-                            char_definitions: &CharacterDefinitions,
-                            unknown_dictionary: &UnknownDictionary,
-                            category: CategoryId,
-                            category_ord: usize,
-                            unknown_word_index: Option<usize>,
-                            start: usize,
-                            suffix: &str,
-                            found: bool) -> Option<usize> {
+    fn process_unknown_word(
+        &mut self,
+        char_definitions: &CharacterDefinitions,
+        unknown_dictionary: &UnknownDictionary,
+        category: CategoryId,
+        category_ord: usize,
+        unknown_word_index: Option<usize>,
+        start: usize,
+        suffix: &str,
+        found: bool,
+    ) -> Option<usize> {
         let mut unknown_word_num_chars: usize = 0;
-        let category_data =
-            char_definitions.lookup_definition(category);
+        let category_data = char_definitions.lookup_definition(category);
         if category_data.invoke || !found {
             unknown_word_num_chars = 1;
             if category_data.group {
@@ -174,7 +186,10 @@ impl Lattice {
         }
         if unknown_word_num_chars > 0 {
             // optimize
-            let unknown_word = suffix.chars().take(unknown_word_num_chars).collect::<String>();
+            let unknown_word = suffix
+                .chars()
+                .take(unknown_word_num_chars)
+                .collect::<String>();
             for &word_id in unknown_dictionary.lookup_word_ids(category) {
                 let word_entry = unknown_dictionary.word_entry(word_id);
                 let edge = Edge {
@@ -184,7 +199,7 @@ impl Lattice {
                     start_index: start as u32,
                     stop_index: (start + unknown_word.len()) as u32,
                     path_cost: i32::max_value(),
-                    kanji_only: is_kanji_only(&unknown_word[..])
+                    kanji_only: is_kanji_only(&unknown_word[..]),
                 };
                 self.add_edge_in_lattice(edge);
             }
@@ -203,7 +218,7 @@ impl Lattice {
 
     fn add_edge(&mut self, edge: Edge) -> EdgeId {
         let edge_id = EdgeId(self.edges.len() as u32);
-        self.edges.push( edge);
+        self.edges.push(edge);
         edge_id
     }
 
@@ -225,8 +240,8 @@ impl Lattice {
                     .map(|left_edge_id| {
                         let left_edge = self.edge(left_edge_id);
                         let mut path_cost = left_edge.path_cost
-                            + cost_matrix.cost(left_edge.word_entry.right_id(),
-                                               right_word_entry.left_id());
+                            + cost_matrix
+                                .cost(left_edge.word_entry.right_id(), right_word_entry.left_id());
                         path_cost += mode.penalty_cost(left_edge);
                         (path_cost, left_edge_id)
                     })
@@ -247,7 +262,7 @@ impl Lattice {
         loop {
             let edge = self.edge(edge_id);
             if let Some(left_edge_id) = edge.left_edge {
-                offsets.push( (edge.start_index as usize, edge.word_entry.word_id));
+                offsets.push((edge.start_index as usize, edge.word_entry.word_id));
                 edge_id = left_edge_id;
             } else {
                 break;
@@ -257,4 +272,3 @@ impl Lattice {
         offsets.pop();
     }
 }
-

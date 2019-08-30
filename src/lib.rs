@@ -1,33 +1,32 @@
+pub mod character_definition;
 mod connection;
+mod prefix_dict;
+pub mod unknown_dictionary;
 mod viterbi;
 mod word_entry;
-mod prefix_dict;
-pub mod character_definition;
-pub mod unknown_dictionary;
 
-use std::io;
-use encoding::DecoderTrap;
-use crate::connection::ConnectionCostMatrix;
-use crate::viterbi::{Lattice, Edge};
-pub use crate::word_entry::{WordEntry, WordDetail};
-use crate::prefix_dict::PrefixDict;
 pub use crate::character_definition::CharacterDefinitions;
-use std::path::Path;
-use std::fs::File;
-use std::io::Read;
-use encoding::Encoding;
-use std::num::ParseIntError;
+use crate::connection::ConnectionCostMatrix;
+use crate::prefix_dict::PrefixDict;
 use crate::unknown_dictionary::UnknownDictionary;
-use std::fmt::Debug;
+use crate::viterbi::{Edge, Lattice};
 use crate::word_entry::WordDictionary;
+pub use crate::word_entry::{WordDetail, WordEntry};
+use encoding::DecoderTrap;
+use encoding::Encoding;
+use std::fmt::Debug;
+use std::fs::File;
+use std::io;
+use std::io::Read;
+use std::num::ParseIntError;
+use std::path::Path;
 
 #[derive(Debug)]
 pub enum ParsingError {
     Encoding,
     IoError(io::Error),
-    ContentError(String)
+    ContentError(String),
 }
-
 
 impl ParsingError {
     fn from_error<D: Debug>(error: D) -> ParsingError {
@@ -47,10 +46,7 @@ impl From<ParseIntError> for ParsingError {
     }
 }
 
-
-fn normalize_string(s: &str, output: &mut String) {
-    
-}
+fn normalize_string(s: &str, output: &mut String) {}
 
 #[derive(Clone, Debug)]
 pub struct Penalty {
@@ -84,18 +80,18 @@ impl Penalty {
             return 0;
         }
         if edge.kanji_only {
-            ((num_chars - self.kanji_penalty_length_threshold) as i32) * self.kanji_penalty_length_penalty
+            ((num_chars - self.kanji_penalty_length_threshold) as i32)
+                * self.kanji_penalty_length_penalty
         } else if num_chars > self.other_penalty_length_threshold {
-            ((num_chars - self.other_penalty_length_threshold) as i32) * self.other_penalty_length_penalty
+            ((num_chars - self.other_penalty_length_threshold) as i32)
+                * self.other_penalty_length_penalty
         } else {
             0
         }
     }
 }
 
-
 impl Mode {
-
     pub fn is_search(&self) -> bool {
         match self {
             Mode::Normal => false,
@@ -111,18 +107,18 @@ impl Mode {
 }
 
 pub fn read_mecab_file(filename: &'static str) -> Result<String, ParsingError> {
-    let path = Path::new( "mecab-ipadic").join(Path::new(filename));
+    let path = Path::new("mecab-ipadic").join(Path::new(filename));
     let mut input_read = File::open(path)?;
     let mut buffer = Vec::new();
     input_read.read_to_end(&mut buffer)?;
-    encoding::all::EUC_JP.decode(&buffer, DecoderTrap::Strict)
+    encoding::all::EUC_JP
+        .decode(&buffer, DecoderTrap::Strict)
         .map_err(|_| ParsingError::Encoding)
 }
 
-
 pub struct Token<'a> {
     pub text: &'a str,
-    pub detail: WordDetail
+    pub detail: WordDetail,
 }
 
 pub struct Tokenizer {
@@ -148,7 +144,7 @@ impl Tokenizer {
             char_definitions,
             unknown_dictionary,
             mode,
-            offsets: Vec::new()
+            offsets: Vec::new(),
         }
     }
 
@@ -156,11 +152,9 @@ impl Tokenizer {
         Self::new(Mode::Search(Penalty::default()))
     }
 
-
     pub fn normal() -> Tokenizer {
         Self::new(Mode::Normal)
     }
-
 
     /// Returns an array of offsets that mark the beginning of each tokens,
     /// in bytes.
@@ -178,8 +172,15 @@ impl Tokenizer {
         if text.is_empty() {
             return &[];
         }
-        self.lattice.set_text(&self.dict, &self.char_definitions, &self.unknown_dictionary, text, &self.mode);
-        self.lattice.calculate_path_costs(&self.cost_matrix, &self.mode);
+        self.lattice.set_text(
+            &self.dict,
+            &self.char_definitions,
+            &self.unknown_dictionary,
+            text,
+            &self.mode,
+        );
+        self.lattice
+            .calculate_path_costs(&self.cost_matrix, &self.mode);
         self.lattice.tokens_offset(&mut self.offsets);
         &self.offsets[..]
     }
@@ -188,16 +189,15 @@ impl Tokenizer {
         let offsets = self.tokenize_offsets(text);
         for i in 0..offsets.len() {
             let (token_start, word_detail) = offsets[i];
-            let token_stop =
-                if i == offsets.len() - 1 {
-                    text.len()
-                } else {
-                    let (next_start, _) = offsets[i + 1];
-                    next_start
-                };
+            let token_stop = if i == offsets.len() - 1 {
+                text.len()
+            } else {
+                let (next_start, _) = offsets[i + 1];
+                next_start
+            };
             tokens.push(Token {
                 text: &text[token_start..token_stop],
-                detail: WordDictionary::load_word_id(word_detail)
+                detail: WordDictionary::load_word_id(word_detail),
             })
         }
     }
@@ -206,22 +206,21 @@ impl Tokenizer {
         let offsets = self.tokenize_offsets(text);
         for i in 0..offsets.len() {
             let (token_start, _word_detail) = offsets[i];
-            let token_stop =
-                if i == offsets.len() - 1 {
-                    text.len()
-                } else {
-                    let (next_start, _) = offsets[i + 1];
-                    next_start
-                };
+            let token_stop = if i == offsets.len() - 1 {
+                text.len()
+            } else {
+                let (next_start, _) = offsets[i + 1];
+                next_start
+            };
             tokens.push(&text[token_start..token_stop]);
         }
     }
 
     pub fn tokenize<'a>(&'a mut self, mut text: &'a str) -> Vec<Token> {
         let mut tokens = Vec::new();
-        while let Some(split_idx) = text.find(|c| c=='。' || c == '、') {
+        while let Some(split_idx) = text.find(|c| c == '。' || c == '、') {
             self.tokenize_without_split(&text[..split_idx + 3], &mut tokens);
-            text = &text[split_idx+3..];
+            text = &text[split_idx + 3..];
         }
         if !text.is_empty() {
             self.tokenize_without_split(&text, &mut tokens);
@@ -231,9 +230,9 @@ impl Tokenizer {
 
     pub fn tokenize_str<'a>(&'a mut self, mut text: &'a str) -> Vec<&'a str> {
         let mut tokens = Vec::new();
-        while let Some(split_idx) = text.find(|c| c=='。' || c == '、') {
+        while let Some(split_idx) = text.find(|c| c == '。' || c == '、') {
             self.tokenize_without_split_str(&text[..split_idx + 3], &mut tokens);
-            text = &text[split_idx+3..];
+            text = &text[split_idx + 3..];
         }
         if !text.is_empty() {
             self.tokenize_without_split_str(&text, &mut tokens);
@@ -241,7 +240,6 @@ impl Tokenizer {
         tokens
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -353,7 +351,25 @@ mod tests {
     fn test_mukigen_normal() {
         let mut tokenizer = Tokenizer::normal();
         let tokens: Vec<&str> = tokenizer.tokenize_str("無期限に—でもどの種を?");
-        assert_eq!(tokens, vec!["おはよう", "一", "夏休み", "さ", " ", "あと", "お", "ー", "ヶ月", " ", "ぐらい", "ほしい", "よ", "な"]);
+        assert_eq!(
+            tokens,
+            vec![
+                "おはよう",
+                "一",
+                "夏休み",
+                "さ",
+                " ",
+                "あと",
+                "お",
+                "ー",
+                "ヶ月",
+                " ",
+                "ぐらい",
+                "ほしい",
+                "よ",
+                "な"
+            ]
+        );
     }
 
     #[test]
@@ -382,11 +398,55 @@ mod tests {
         let mut tokenizer = Tokenizer::normal();
         let tokens: Vec<&str> = tokenizer.tokenize_str(
             "本項で解説する地方病とは、山梨県における日本住血吸虫症の呼称であり、\
-            長い間その原因が明らかにならず住民を苦しめた感染症である。");
-        assert_eq!(tokens, vec!["本", "項", "で", "解説", "する", "地方",
-                                "病", "と", "は", "、", "山梨", "県", "における",
-                                "日本", "住", "血", "吸", "虫", "症", "の",
-                                "呼称", "で", "あり", "、", "長い", "間", "その", "原因", "が", "明らか", "に", "なら", "ず", "住民", "を", "苦しめ", "た", "感染", "症", "で", "ある", "。"]);
+             長い間その原因が明らかにならず住民を苦しめた感染症である。",
+        );
+        assert_eq!(
+            tokens,
+            vec![
+                "本",
+                "項",
+                "で",
+                "解説",
+                "する",
+                "地方",
+                "病",
+                "と",
+                "は",
+                "、",
+                "山梨",
+                "県",
+                "における",
+                "日本",
+                "住",
+                "血",
+                "吸",
+                "虫",
+                "症",
+                "の",
+                "呼称",
+                "で",
+                "あり",
+                "、",
+                "長い",
+                "間",
+                "その",
+                "原因",
+                "が",
+                "明らか",
+                "に",
+                "なら",
+                "ず",
+                "住民",
+                "を",
+                "苦しめ",
+                "た",
+                "感染",
+                "症",
+                "で",
+                "ある",
+                "。"
+            ]
+        );
     }
 
     #[test]

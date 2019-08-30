@@ -1,29 +1,29 @@
+use bincode;
+use byteorder::ByteOrder;
+use byteorder::{LittleEndian, WriteBytesExt};
+use encoding::all::UTF_16LE;
+use encoding::{DecoderTrap, Encoding};
+use kuromoji::character_definition::{CategoryData, CategoryId};
+use kuromoji::unknown_dictionary::UnknownDictionary;
+use kuromoji::CharacterDefinitions;
+use kuromoji::{WordDetail, WordEntry};
+use std::collections::{BTreeMap, HashMap};
+use std::fmt::Debug;
 use std::fs::File;
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
+use std::num::ParseIntError;
+use std::path::Path;
 use std::str::FromStr;
 use std::u32;
 use tantivy_fst::MapBuilder;
-use kuromoji::{WordEntry, WordDetail};
-use std::collections::{BTreeMap, HashMap};
-use byteorder::{WriteBytesExt, LittleEndian};
-use kuromoji::CharacterDefinitions;
-use encoding::{DecoderTrap, Encoding};
-use kuromoji::character_definition::{CategoryId, CategoryData};
-use encoding::all::UTF_16LE;
-use std::fmt::Debug;
-use std::num::ParseIntError;
-use std::path::Path;
-use byteorder::ByteOrder;
-use bincode;
-use kuromoji::unknown_dictionary::UnknownDictionary;
-
 
 fn read_mecab_file(filename: &'static str) -> Result<String, ParsingError> {
-    let path = Path::new( "mecab-ipadic2").join(Path::new(filename));
+    let path = Path::new("mecab-ipadic2").join(Path::new(filename));
     let mut input_read = File::open(path)?;
     let mut buffer = Vec::new();
     input_read.read_to_end(&mut buffer)?;
-    encoding::all::EUC_JP.decode(&buffer, DecoderTrap::Strict)
+    encoding::all::EUC_JP
+        .decode(&buffer, DecoderTrap::Strict)
         .map_err(|_| ParsingError::Encoding)
 }
 
@@ -31,9 +31,8 @@ fn read_mecab_file(filename: &'static str) -> Result<String, ParsingError> {
 pub enum ParsingError {
     Encoding,
     IoError(io::Error),
-    ContentError(String)
+    ContentError(String),
 }
-
 
 impl ParsingError {
     pub fn from_error<D: Debug>(error: D) -> ParsingError {
@@ -52,8 +51,6 @@ impl From<ParseIntError> for ParsingError {
         ParsingError::from_error(parse_err)
     }
 }
-
-
 
 #[derive(Debug)]
 pub struct CSVRow<'a> {
@@ -130,31 +127,31 @@ const FILENAMES: [&'static str; 26] = [
 
 fn build_dict() -> Result<(), ParsingError> {
     println!("BUILD DICT");
-    let files_data: Vec<String> = FILENAMES.iter()
+    let files_data: Vec<String> = FILENAMES
+        .iter()
         .map(|filename| read_mecab_file(filename))
         .collect::<Result<Vec<String>, ParsingError>>()?;
     println!("  - read files");
     let lines: Vec<String> = files_data
         .iter()
-        .flat_map(|file_data: &String| {
-            file_data.lines().map(|line| line.to_string())
+        .flat_map(|file_data: &String| file_data.lines().map(|line| line.to_string()))
+        .map(|line| {
+            line.chars()
+                .map(|c| {
+                    if c == '―' {
+                        // yeah for EUC_JP and ambiguous unicode 8012 vs 8013
+                        return '—';
+                    } else if c == '～' {
+                        // same bullshit as above between for 12316 vs 65374
+                        return '〜';
+                    } else {
+                        return c;
+                    }
+                })
+                .collect::<String>()
         })
-        .map(|line| line.chars().map(|c| {
-            if c == '―' {
-                // yeah for EUC_JP and ambiguous unicode 8012 vs 8013
-                return '—';
-            } else if c == '～' {
-                // same bullshit as above between for 12316 vs 65374
-                return '〜';
-            } else {
-                return c;
-            }
-        }).collect::<String>())
         .collect();
-    let mut rows: Vec<CSVRow> = lines
-        .iter()
-        .map(CSVRow::from_line)
-         .collect();
+    let mut rows: Vec<CSVRow> = lines.iter().map(CSVRow::from_line).collect();
     println!("  - parsed csv");
     rows.sort_by_key(|row| row.surface_form.clone());
     println!("  - sorted csv");
@@ -166,7 +163,11 @@ fn build_dict() -> Result<(), ParsingError> {
 
     for (row_id, row) in rows.iter().enumerate() {
         if row.word_cost == 3978 {
-            println!("{} -> {}", row.surface_form, row.surface_form.chars().next().unwrap() as u32);
+            println!(
+                "{} -> {}",
+                row.surface_form,
+                row.surface_form.chars().next().unwrap() as u32
+            );
         }
         word_entry_map
             .entry(row.surface_form.to_string())
@@ -179,17 +180,16 @@ fn build_dict() -> Result<(), ParsingError> {
     }
 
     let mut wtr_words = io::BufWriter::new(File::create("dict/dict.words")?);
-    let mut wtr_words_idx =io::BufWriter::new(File::create("dict/dict.wordsidx")?);
+    let mut wtr_words_idx = io::BufWriter::new(File::create("dict/dict.wordsidx")?);
     let mut words_buffer = Vec::new();
-    for  row in rows.iter() {
+    for row in rows.iter() {
         let word = WordDetail {
-            reading: row.reading.to_string()
+            reading: row.reading.to_string(),
         };
         let offset = words_buffer.len();
         wtr_words_idx.write_u32::<LittleEndian>(offset as u32)?;
         bincode::serialize_into(&mut words_buffer, &word).unwrap();
     }
-
 
     wtr_words.write_all(&words_buffer[..])?;
     wtr_words.flush()?;
@@ -218,14 +218,13 @@ fn build_dict() -> Result<(), ParsingError> {
     Ok(())
 }
 
-
-
 fn build_cost_matrix() -> Result<(), ParsingError> {
     println!("BUILD COST MATRIX");
     let matrix_data = read_mecab_file("matrix.def")?;
     let mut lines = Vec::new();
     for line in matrix_data.lines() {
-        let fields: Vec<i32> = line.split_whitespace()
+        let fields: Vec<i32> = line
+            .split_whitespace()
             .map(i32::from_str)
             .collect::<Result<_, _>>()?;
         lines.push(fields);
@@ -255,15 +254,12 @@ fn build_cost_matrix() -> Result<(), ParsingError> {
 
 const DEFAULT_CATEGORY_NAME: &'static str = "DEFAULT";
 
-
-
 #[derive(Default)]
 pub struct CharacterDefinitionsBuilder {
     category_definition: Vec<CategoryData>,
     category_index: HashMap<String, CategoryId>,
-    char_ranges: Vec<(u32, u32, Vec<CategoryId>)>
+    char_ranges: Vec<(u32, u32, Vec<CategoryId>)>,
 }
-
 
 fn ucs2_to_unicode(ucs2_codepoint: u16) -> u32 {
     let mut buf = [0u8; 2];
@@ -282,10 +278,10 @@ fn parse_hex_codepoint(s: &str) -> Result<u32, ParsingError> {
 }
 
 impl CharacterDefinitionsBuilder {
-
     pub fn category_id(&mut self, category_name: &str) -> CategoryId {
         let num_categories = self.category_index.len();
-        *self.category_index
+        *self
+            .category_index
             .entry(category_name.to_string())
             .or_insert(CategoryId(num_categories))
     }
@@ -305,13 +301,11 @@ impl CharacterDefinitionsBuilder {
         Ok(())
     }
 
-
-
     fn parse_range(&mut self, line: &str) -> Result<(), ParsingError> {
-        let fields: Vec<&str> =  line.split_whitespace().collect();
+        let fields: Vec<&str> = line.split_whitespace().collect();
         let range_bounds: Vec<&str> = fields[0].split("..").collect();
         let lower_bound: u32;
-        let higher_bound: u32   ;
+        let higher_bound: u32;
         match range_bounds.len() {
             1 => {
                 lower_bound = parse_hex_codepoint(range_bounds[0])?;
@@ -323,7 +317,10 @@ impl CharacterDefinitionsBuilder {
                 higher_bound = parse_hex_codepoint(range_bounds[1])?;
             }
             _ => {
-                return Err(ParsingError::ContentError(format!("Invalid line: {}", line)));
+                return Err(ParsingError::ContentError(format!(
+                    "Invalid line: {}",
+                    line
+                )));
             }
         }
         let category_ids: Vec<CategoryId> = fields[1..]
@@ -331,19 +328,28 @@ impl CharacterDefinitionsBuilder {
             .map(|category| self.category_id(category))
             .collect();
         println!("{} - {} => {:?}", lower_bound, higher_bound, &fields[1..]);
-        self.char_ranges.push((lower_bound, higher_bound, category_ids));
+        self.char_ranges
+            .push((lower_bound, higher_bound, category_ids));
         Ok(())
     }
 
     fn parse_category(&mut self, line: &str) -> Result<(), ParsingError> {
         let fields = line.split_ascii_whitespace().collect::<Vec<&str>>();
         if fields.len() != 4 {
-            return Err(ParsingError::ContentError(format!("Expected 4 fields. Got {} in {}", fields.len(), line)));
+            return Err(ParsingError::ContentError(format!(
+                "Expected 4 fields. Got {} in {}",
+                fields.len(),
+                line
+            )));
         }
         let invoke = fields[1].parse::<u32>().map_err(ParsingError::from_error)? == 1;
         let group = fields[2].parse::<u32>().map_err(ParsingError::from_error)? == 1;
         let length = fields[3].parse::<u32>().map_err(ParsingError::from_error)?;
-        let category_data = CategoryData { invoke, group, length };
+        let category_data = CategoryData {
+            invoke,
+            group,
+            length,
+        };
         // force a category_id allocation
         self.category_id(fields[0]);
         self.category_definition.push(category_data);
@@ -357,17 +363,18 @@ impl CharacterDefinitionsBuilder {
         for (category_name, category_id) in &self.category_index {
             category_names[category_id.0] = category_name.clone();
         }
-        let default_category = *self.category_index.get(DEFAULT_CATEGORY_NAME)
+        let default_category = *self
+            .category_index
+            .get(DEFAULT_CATEGORY_NAME)
             .expect("No default category defined.");
         CharacterDefinitions {
             category_definitions: self.category_definition,
             category_names,
             mapping: self.char_ranges,
-            default_category: [default_category]
+            default_category: [default_category],
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct DictionaryEntry {
@@ -377,11 +384,12 @@ pub struct DictionaryEntry {
     word_cost: i32,
 }
 
-
-
 fn parse_dictionary_entry(fields: &[&str]) -> Result<DictionaryEntry, ParsingError> {
     if fields.len() != 11 {
-        return Err(ParsingError::ContentError(format!("Invalid number of fields. Expect 11, got {}", fields.len())));
+        return Err(ParsingError::ContentError(format!(
+            "Invalid number of fields. Expect 11, got {}",
+            fields.len()
+        )));
     }
     let surface = fields[0];
     let left_id = u32::from_str(fields[1])?;
@@ -391,11 +399,9 @@ fn parse_dictionary_entry(fields: &[&str]) -> Result<DictionaryEntry, ParsingErr
         surface: surface.to_string(),
         left_id,
         right_id,
-        word_cost
+        word_cost,
     })
 }
-
-
 
 fn make_costs_array(entries: &[DictionaryEntry]) -> Vec<WordEntry> {
     entries
@@ -405,39 +411,37 @@ fn make_costs_array(entries: &[DictionaryEntry]) -> Vec<WordEntry> {
             WordEntry {
                 word_id: std::u32::MAX,
                 cost_id: e.left_id as u16,
-                word_cost: e.word_cost as i16
+                word_cost: e.word_cost as i16,
             }
         })
         .collect()
 }
 
-
 fn get_entry_id_matching_surface(entries: &[DictionaryEntry], target_surface: &str) -> Vec<u32> {
     entries
         .iter()
         .enumerate()
-        .filter_map(|(entry_id, entry)|
+        .filter_map(|(entry_id, entry)| {
             if entry.surface == target_surface {
                 Some(entry_id as u32)
             } else {
                 None
-            })
+            }
+        })
         .collect()
 }
 
-fn make_category_references(
-    categories: &[String],
-    entries: &[DictionaryEntry]) -> Vec<Vec<u32>> {
+fn make_category_references(categories: &[String], entries: &[DictionaryEntry]) -> Vec<Vec<u32>> {
     categories
         .iter()
         .map(|category| get_entry_id_matching_surface(entries, category))
         .collect()
 }
 
-
 fn parse_unk(
     categories: &[String],
-    file_content: &String) -> Result<UnknownDictionary, ParsingError> {
+    file_content: &String,
+) -> Result<UnknownDictionary, ParsingError> {
     let mut unknown_dict_entries = Vec::new();
     for line in file_content.lines() {
         let fields: Vec<&str> = line.split(",").collect::<Vec<&str>>();
@@ -460,7 +464,8 @@ fn build_chardef() -> Result<CharacterDefinitions, ParsingError> {
     char_definitions_builder.parse(&char_def)?;
     let char_definitions = char_definitions_builder.build();
     let mut wtr_chardef = io::BufWriter::new(File::create("dict/char_def.bin")?);
-    bincode::serialize_into(&mut wtr_chardef, &char_definitions).map_err(ParsingError::from_error)?;
+    bincode::serialize_into(&mut wtr_chardef, &char_definitions)
+        .map_err(ParsingError::from_error)?;
     wtr_chardef.flush()?;
     Ok(char_definitions)
 }
@@ -469,7 +474,7 @@ fn build_unk(chardef: &CharacterDefinitions) -> Result<(), ParsingError> {
     println!("BUILD UNK");
     let unk_data = crate::read_mecab_file("unk.def")?;
     let unknown_dictionary = parse_unk(&chardef.categories(), &unk_data)?;
-    let mut wtr_unk= io::BufWriter::new(File::create("dict/unk.bin")?);
+    let mut wtr_unk = io::BufWriter::new(File::create("dict/unk.bin")?);
     bincode::serialize_into(&mut wtr_unk, &unknown_dictionary).map_err(ParsingError::from_error)?;
     wtr_unk.flush()?;
     Ok(())

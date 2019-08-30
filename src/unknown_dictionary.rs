@@ -1,6 +1,6 @@
-use crate::WordEntry;
 use crate::character_definition::CategoryId;
-use serde::{Serialize, Deserialize};
+use crate::WordEntry;
+use serde::{Deserialize, Serialize};
 
 const CHAR_DEFINITION_DATA: &'static [u8] = include_bytes!("../dict/unk.bin");
 
@@ -11,7 +11,6 @@ pub struct UnknownDictionary {
     pub costs: Vec<WordEntry>,
 }
 
-
 #[derive(Debug)]
 pub struct DictionaryEntry {
     surface: String,
@@ -21,16 +20,13 @@ pub struct DictionaryEntry {
 }
 
 impl UnknownDictionary {
-
     pub fn word_entry(&self, word_id: u32) -> WordEntry {
         self.costs[word_id as usize]
     }
 
-
     pub fn lookup_word_ids(&self, category_id: CategoryId) -> &[u32] {
         &self.category_references[category_id.0][..]
     }
-
 
     pub fn load() -> UnknownDictionary {
         bincode::deserialize(CHAR_DEFINITION_DATA).unwrap()
