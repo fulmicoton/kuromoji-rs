@@ -62,7 +62,6 @@ impl From<ParseIntError> for ParsingError {
     }
 }
 
-fn normalize_string(s: &str, output: &mut String) {}
 
 #[derive(Clone, Debug)]
 pub struct Penalty {

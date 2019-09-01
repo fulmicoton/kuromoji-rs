@@ -3,11 +3,11 @@ use byteorder::ByteOrder;
 use byteorder::{LittleEndian, WriteBytesExt};
 use encoding::all::UTF_16LE;
 use encoding::{DecoderTrap, Encoding};
-use kuromoji::character_definition::{CategoryData, CategoryId};
+use kuromoji::character_definition::{CategoryData, CategoryId, LookupTable};
 use kuromoji::unknown_dictionary::UnknownDictionary;
 use kuromoji::{CharacterDefinitions, WordId};
 use kuromoji::{WordDetail, WordEntry};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, BTreeSet};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -277,6 +277,7 @@ fn parse_hex_codepoint(s: &str) -> Result<u32, ParsingError> {
     Ok(utf8_str)
 }
 
+
 impl CharacterDefinitionsBuilder {
     pub fn category_id(&mut self, category_name: &str) -> CategoryId {
         let num_categories = self.category_index.len();
@@ -284,6 +285,36 @@ impl CharacterDefinitionsBuilder {
             .category_index
             .entry(category_name.to_string())
             .or_insert(CategoryId(num_categories))
+    }
+
+    fn lookup_categories(&self, c: u32, categories_buffer: &mut Vec<CategoryId>) {
+        categories_buffer.clear();
+        for (start, stop, category_ids) in &self.char_ranges {
+            if *start <= c && *stop >= c {
+                for cat in category_ids {
+                    if !categories_buffer.contains(cat) {
+                        categories_buffer.push(*cat);
+                    }
+                }
+            }
+        }
+        if categories_buffer.is_empty() {
+            let default_category =
+                self.category_index
+                    .get(DEFAULT_CATEGORY_NAME)
+                    .unwrap();
+            categories_buffer.push(*default_category);
+        }
+    }
+
+    fn build_lookup_table(&self) -> LookupTable<CategoryId> {
+        let mut boundaries_set: BTreeSet<u32> =
+            self.char_ranges
+                .iter()
+                .flat_map(|(low, high, _)| vec![*low, *high + 1u32])
+                .collect();
+        let boundaries: Vec<u32> = boundaries_set.into_iter().collect();
+        LookupTable::from_fn(boundaries, &|c, buff| self.lookup_categories(c, buff))
     }
 
     pub fn parse(&mut self, content: &String) -> Result<(), ParsingError> {
@@ -363,15 +394,11 @@ impl CharacterDefinitionsBuilder {
         for (category_name, category_id) in &self.category_index {
             category_names[category_id.0] = category_name.clone();
         }
-        let default_category = *self
-            .category_index
-            .get(DEFAULT_CATEGORY_NAME)
-            .expect("No default category defined.");
+        let mapping = self.build_lookup_table();
         CharacterDefinitions {
             category_definitions: self.category_definition,
             category_names,
-            mapping: self.char_ranges,
-            default_category: [default_category],
+            mapping
         }
     }
 }

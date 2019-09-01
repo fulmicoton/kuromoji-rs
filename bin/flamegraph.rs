@@ -23,6 +23,6 @@ P2P通信によってウェブコンテンツのインデックスを多数の�
 fn main() {
     let mut tokenizer = Tokenizer::for_search();
     for _ in 0..10_000 {
-        //        tokenizer.tokenize_offsets(TEXT);
+        tokenizer.tokenize(TEXT);
     }
 }

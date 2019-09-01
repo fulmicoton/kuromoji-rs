@@ -138,8 +138,7 @@ impl Lattice {
                 || unknown_word_end.map(|index| index <= start).unwrap_or(true)
             {
                 if let Some(first_char) = suffix.chars().next() {
-                    let mut categories = vec![];
-                    char_definitions.lookup_categories(first_char, &mut categories);
+                    let categories = char_definitions.lookup_categories(first_char);
                     for (category_ord, &category) in categories.iter().enumerate() {
                         unknown_word_end = self.process_unknown_word(
                             char_definitions,
@@ -174,8 +173,7 @@ impl Lattice {
             unknown_word_num_chars = 1;
             if category_data.group {
                 for c in suffix.chars().skip(1) {
-                    let mut categories = vec![];
-                    char_definitions.lookup_categories(c, &mut categories);
+                    let mut categories = char_definitions.lookup_categories(c);
                     if categories.len() > category_ord && categories[category_ord] == category {
                         unknown_word_num_chars += 1;
                     } else {

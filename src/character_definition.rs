@@ -16,8 +16,39 @@ pub struct CategoryId(pub usize);
 pub struct CharacterDefinitions {
     pub category_definitions: Vec<CategoryData>,
     pub category_names: Vec<String>,
-    pub mapping: Vec<(u32, u32, Vec<CategoryId>)>,
-    pub default_category: [CategoryId; 1],
+    pub mapping: LookupTable<CategoryId>
+}
+
+
+#[derive(Serialize, Deserialize)]
+pub struct LookupTable<T: Copy+Clone> {
+    boundaries: Vec<u32>,
+    values: Vec<Vec<T>>
+}
+
+impl<T: Copy+Clone> LookupTable<T> {
+    pub fn from_fn(mut boundaries: Vec<u32>, funct: &dyn Fn(u32, &mut Vec<T>)) -> LookupTable<T> {
+        if !boundaries.contains(&0) {
+            boundaries.push(0);
+        }
+        boundaries.sort_unstable();
+        let mut values = Vec::new();
+        for &boundary in &boundaries {
+            let mut output = Vec::default();
+            funct(boundary, &mut output);
+            values.push(output);
+        }
+        LookupTable {
+            boundaries,
+            values
+        }
+    }
+
+    pub fn eval(&self, target: u32) -> &[T] {
+        let idx = self.boundaries.binary_search(&target)
+            .unwrap_or_else(|val| val - 1);
+        &self.values[idx][..]
+    }
 }
 
 impl CharacterDefinitions {
@@ -37,23 +68,8 @@ impl CharacterDefinitions {
         &self.category_names[category_id.0 as usize]
     }
 
-    pub fn lookup_categories(&self, c: char, categories_buffer: &mut Vec<CategoryId>) {
-        // TODO optimize
-        categories_buffer.clear();
-        //let mut res = &self.default_category[..];
-        let c = c as u32;
-        for (start, stop, category_ids) in &self.mapping {
-            if *start <= c && *stop >= c {
-                for cat in category_ids {
-                    if !categories_buffer.contains(cat) {
-                        categories_buffer.push(*cat);
-                    }
-                }
-            }
-        }
-        if categories_buffer.is_empty() {
-            categories_buffer.extend(&self.default_category[..]);
-        }
+    pub fn lookup_categories(&self, c: char) -> &[CategoryId] {
+        self.mapping.eval(c as u32)
     }
 }
 
@@ -62,11 +78,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_lookup_table() {
+        let funct = |c: u32, output: &mut Vec<u32>| {
+            if c >= 10u32 {
+                output.push(1u32);
+            } else {
+                output.push(0u32);
+            }
+        };
+        let lookup_table = LookupTable::from_fn(vec![0u32, 10u32], &funct);
+        for i in 0..100 {
+            let mut v = Vec::default();
+            funct(i, &mut v);
+            assert_eq!(lookup_table.eval(i), &v[..]);
+        }
+    }
+
+    #[test]
     fn test_bisa() {
-        let mut v = vec![];
         let char_definitions = CharacterDefinitions::load();
-        char_definitions.lookup_categories('々', &mut v);
-        let category_ids: Vec<&str> = v
+        let category_ids: Vec<&str> = char_definitions.lookup_categories('々')
             .iter()
             .map(|&category_id| char_definitions.category_name(category_id))
             .collect();
@@ -75,10 +106,9 @@ mod tests {
 
     #[test]
     fn test_jp_hyphen() {
-        let mut v = vec![];
         let char_definitions = CharacterDefinitions::load();
-        char_definitions.lookup_categories('ー', &mut v);
-        let category_ids: Vec<&str> = v
+        let category_ids: Vec<&str> = char_definitions
+            .lookup_categories('ー')
             .iter()
             .map(|&category_id| char_definitions.category_name(category_id))
             .collect();
@@ -87,20 +117,19 @@ mod tests {
 
     #[test]
     fn test_char_definitions() {
-        let mut v = vec![];
         let char_definitions = CharacterDefinitions::load();
         {
-            char_definitions.lookup_categories('あ', &mut v);
+            let v = char_definitions.lookup_categories('あ');
             assert_eq!(v.len(), 1);
             assert_eq!(char_definitions.category_name(v[0]), "HIRAGANA");
         }
         {
-            char_definitions.lookup_categories('@', &mut v);
+            let v = char_definitions.lookup_categories('@');
             assert_eq!(v.len(), 1);
             assert_eq!(char_definitions.category_name(v[0]), "SYMBOL");
         }
         {
-            char_definitions.lookup_categories('一', &mut v);
+            let v = char_definitions.lookup_categories('一');
             assert_eq!(v.len(), 2);
             assert_eq!(char_definitions.category_name(v[0]), "KANJI");
             assert_eq!(char_definitions.category_name(v[1]), "KANJINUMERIC");
